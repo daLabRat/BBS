@@ -1,14 +1,18 @@
 pub mod api;
+pub mod registry;
 pub mod session;
 
 use std::path::PathBuf;
 use std::sync::Arc;
+
+pub use registry::SessionRegistry;
 
 /// Shared configuration passed to every user session.
 pub struct RuntimeConfig {
     pub scripts_dir: PathBuf,
     pub doors_dir: PathBuf,
     pub db: Arc<bbs_core::Database>,
+    pub registry: SessionRegistry,
 }
 
 pub use bbs_tui::Terminal;

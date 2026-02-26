@@ -32,6 +32,9 @@ local function main()
 
     bbs.writeln("Hello, " .. bbs.user.name .. "!")
 
+    -- Register in the who's-online list for this session
+    bbs.who.checkin(bbs.user.name)
+
     -- Show any active bulletins after login
     bulletins.show_new()
 

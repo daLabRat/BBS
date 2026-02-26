@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use bbs_core::Database;
-use bbs_runtime::RuntimeConfig;
+use bbs_runtime::{RuntimeConfig, SessionRegistry};
 use config::{Config, File};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -38,10 +38,13 @@ async fn main() -> Result<()> {
         .get_string("paths.doors")
         .unwrap_or_else(|_| "doors".into());
 
+    let registry = SessionRegistry::default();
+
     let runtime_config = Arc::new(RuntimeConfig {
         scripts_dir: scripts_dir.into(),
         doors_dir: doors_dir.into(),
         db: Arc::clone(&db),
+        registry,
     });
 
     info!(

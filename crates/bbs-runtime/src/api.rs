@@ -8,7 +8,10 @@ use bbs_tui::Terminal;
 use bytes::Bytes;
 use mlua::prelude::*;
 
+use crate::registry::SessionHandle;
 use crate::RuntimeConfig;
+
+impl mlua::UserData for SessionHandle {}
 
 pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result<()> {
     let bbs = lua.create_table()?;
@@ -770,6 +773,48 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         }
 
         bbs.set("profile", profile_tbl)?;
+    }
+
+    // --- bbs.who ---
+    {
+        let registry = config.registry.clone();
+        let who_tbl = lua.create_table()?;
+
+        // bbs.who.list() -> [{name, connected_at}]
+        {
+            let registry = registry.clone();
+            who_tbl.set(
+                "list",
+                lua.create_function(move |lua, ()| {
+                    let entries = registry.list();
+                    let result = lua.create_table()?;
+                    for (i, e) in entries.into_iter().enumerate() {
+                        let t = lua.create_table()?;
+                        t.set("name", e.name)?;
+                        t.set("connected_at", e.connected_at as i64)?;
+                        result.set(i + 1, t)?;
+                    }
+                    Ok(result)
+                })?,
+            )?;
+        }
+
+        // bbs.who.checkin(name) — stores a SessionHandle as Lua UserData so it
+        // deregisters automatically when the Lua VM is torn down.
+        {
+            who_tbl.set(
+                "checkin",
+                lua.create_function(move |lua, name: String| {
+                    let handle = registry.checkin(name);
+                    // Pin the handle as a Lua global so it lives exactly as
+                    // long as this VM, deregistering the session on VM drop.
+                    lua.globals().set("_who_handle", lua.create_userdata(handle)?)?;
+                    Ok(())
+                })?,
+            )?;
+        }
+
+        bbs.set("who", who_tbl)?;
     }
 
     // --- bbs.callers ---
