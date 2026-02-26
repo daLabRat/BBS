@@ -3,3 +3,4 @@
 .env
 *.env.local
 bbs.db
+config/host_key
