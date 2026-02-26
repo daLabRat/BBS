@@ -19,12 +19,12 @@ pub mod ansi {
 
     pub fn named(name: &str) -> &'static str {
         match name {
-            "reset"        => RESET,
-            "bold"         => BOLD,
-            "clear"        => CLEAR_SCREEN,
-            "hide_cursor"  => HIDE_CURSOR,
-            "show_cursor"  => SHOW_CURSOR,
-            _              => RESET,
+            "reset" => RESET,
+            "bold" => BOLD,
+            "clear" => CLEAR_SCREEN,
+            "hide_cursor" => HIDE_CURSOR,
+            "show_cursor" => SHOW_CURSOR,
+            _ => RESET,
         }
     }
 }

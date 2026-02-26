@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use anyhow::Result;
+use std::path::{Path, PathBuf};
 
 /// Scans the doors/ directory and returns available door names.
 pub struct DoorRegistry {
@@ -8,7 +8,9 @@ pub struct DoorRegistry {
 
 impl DoorRegistry {
     pub fn new(doors_dir: impl AsRef<Path>) -> Self {
-        Self { doors_dir: doors_dir.as_ref().to_owned() }
+        Self {
+            doors_dir: doors_dir.as_ref().to_owned(),
+        }
     }
 
     pub fn list(&self) -> Result<Vec<String>> {

@@ -12,7 +12,11 @@ pub struct DoorStore {
 
 impl DoorStore {
     pub fn new(pool: SqlitePool, door_name: impl Into<String>, user_id: i64) -> Self {
-        Self { pool, door_name: door_name.into(), user_id }
+        Self {
+            pool,
+            door_name: door_name.into(),
+            user_id,
+        }
     }
 
     pub async fn get(&self, key: &str) -> Result<Option<String>> {
