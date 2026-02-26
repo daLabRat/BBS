@@ -16,3 +16,4 @@ serde_json = { workspace = true }
 bytes     = { workspace = true }
 bbs-core  = { path = "../bbs-core" }
 bbs-tui   = { path = "../bbs-tui" }
+nix       = { version = "0.29", features = ["term", "fs"] }

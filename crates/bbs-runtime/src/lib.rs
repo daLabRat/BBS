@@ -17,8 +17,10 @@ pub struct RuntimeConfig {
     pub db: Arc<bbs_core::Database>,
     pub registry: SessionRegistry,
     pub throttle: LoginThrottle,
+    pub dos_config: bbs_doors::DosConfig,
 }
 
+pub use bbs_doors::DosConfig;
 pub use bbs_tui::Terminal;
 pub use session::Session;
 

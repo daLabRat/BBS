@@ -15,8 +15,9 @@
 //!   door.sleep(ms)
 //!   door.time()
 //!   door.exit()
-//!   -- door.launch_dos(game_path, drop_file_type)  [STUB — phase 2]
+//!   door.launch_dos(game_path, drop_file_type)
 
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -26,6 +27,7 @@ use bbs_tui::Terminal;
 use bytes::Bytes;
 use mlua::prelude::*;
 
+use crate::dos::DosConfig;
 use crate::session::DoorUser;
 use crate::store::DoorStore;
 
@@ -35,6 +37,7 @@ pub fn register(
     user: &DoorUser,
     store: Arc<DoorStore>,
     exit_flag: Arc<AtomicBool>,
+    dos_config: DosConfig,
 ) -> Result<()> {
     let door = lua.create_table()?;
 
@@ -248,15 +251,32 @@ pub fn register(
         door.set("data", data_tbl)?;
     }
 
-    // door.launch_dos (stub — phase 2)
-    door.set(
-        "launch_dos",
-        lua.create_function(|_lua, (_path, _drop_file): (String, String)| {
-            Err::<(), _>(LuaError::external(anyhow::anyhow!(
-                "DOS game launch not implemented (reserved for phase 2)"
-            )))
-        })?,
-    )?;
+    // door.launch_dos(exe_path, drop_file_type) -> nil
+    {
+        let dos_config = dos_config.clone();
+        let terminal = terminal.clone();
+        let user_snapshot = DoorUser {
+            id: user.id,
+            name: user.name.clone(),
+            is_sysop: user.is_sysop,
+        };
+        door.set(
+            "launch_dos",
+            lua.create_async_function(
+                move |_lua, (exe_path, drop_file_type): (String, String)| {
+                    let dos_config = dos_config.clone();
+                    let terminal = terminal.clone();
+                    let user = user_snapshot.clone();
+                    async move {
+                        dos_config
+                            .launch(Path::new(&exe_path), &drop_file_type, &user, &terminal)
+                            .await
+                            .map_err(LuaError::external)
+                    }
+                },
+            )?,
+        )?;
+    }
 
     lua.globals().set("door", door)?;
 

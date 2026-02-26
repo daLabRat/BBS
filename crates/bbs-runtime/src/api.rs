@@ -592,12 +592,14 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
             let doors_dir = doors_dir.clone();
             let db = Arc::clone(&db);
             let terminal = terminal.clone();
+            let dos_config = config.dos_config.clone();
             doors_tbl.set(
                 "launch",
                 lua.create_async_function(move |lua, name: String| {
                     let doors_dir = doors_dir.clone();
                     let db = Arc::clone(&db);
                     let terminal = terminal.clone();
+                    let dos_config = dos_config.clone();
                     async move {
                         let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
                         let user_tbl: LuaTable = bbs_tbl.get("user")?;
@@ -608,7 +610,7 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                         };
                         let registry = bbs_doors::DoorRegistry::new(&doors_dir);
                         let lua_path = registry.main_lua(&name);
-                        let runner = bbs_doors::DoorRunner::new(db, terminal);
+                        let runner = bbs_doors::DoorRunner::new(db, terminal, dos_config);
                         runner
                             .run(&name, lua_path.to_str().unwrap_or(""), &user)
                             .await

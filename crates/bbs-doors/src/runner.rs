@@ -10,17 +10,19 @@ use mlua::Lua;
 use tracing::info;
 
 use crate::api;
+use crate::dos::DosConfig;
 use crate::session::DoorUser;
 use crate::store::DoorStore;
 
 pub struct DoorRunner {
     db: Arc<Database>,
     terminal: Terminal,
+    dos_config: DosConfig,
 }
 
 impl DoorRunner {
-    pub fn new(db: Arc<Database>, terminal: Terminal) -> Self {
-        Self { db, terminal }
+    pub fn new(db: Arc<Database>, terminal: Terminal, dos_config: DosConfig) -> Self {
+        Self { db, terminal, dos_config }
     }
 
     /// Run a door for the given user.
@@ -43,6 +45,7 @@ impl DoorRunner {
             user,
             Arc::clone(&store),
             Arc::clone(&exit_flag),
+            self.dos_config.clone(),
         )?;
 
         let src = tokio::fs::read_to_string(lua_path).await?;

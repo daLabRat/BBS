@@ -27,3 +27,9 @@ bind    = "0.0.0.0:8080"
 [nntp]
 enabled = true
 bind    = "0.0.0.0:1119"
+
+[dos]
+# Path to the DOSBox-X binary.  Must be on PATH or provide an absolute path.
+bin = "dosbox-x"
+# Where to write temporary per-session DOSBox configs (defaults to system temp dir).
+# temp_dir = "/tmp"

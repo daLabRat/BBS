@@ -1,8 +1,8 @@
-use std::{path::Path, sync::Arc};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use anyhow::Result;
 use bbs_core::Database;
-use bbs_runtime::{LoginThrottle, RuntimeConfig, SessionRegistry};
+use bbs_runtime::{DosConfig, LoginThrottle, RuntimeConfig, SessionRegistry};
 use config::{Config, File};
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -44,6 +44,17 @@ async fn main() -> Result<()> {
     let registry = SessionRegistry::default();
     let throttle = LoginThrottle::default();
 
+    let dos_config = DosConfig {
+        dosbox_bin: cfg
+            .get_string("dos.bin")
+            .unwrap_or_else(|_| "dosbox-x".into())
+            .into(),
+        temp_dir: cfg
+            .get_string("dos.temp_dir")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir()),
+    };
+
     let runtime_config = Arc::new(RuntimeConfig {
         scripts_dir: scripts_dir.into(),
         doors_dir: doors_dir.into(),
@@ -51,6 +62,7 @@ async fn main() -> Result<()> {
         db: Arc::clone(&db),
         registry,
         throttle,
+        dos_config,
     });
 
     // ── Path validation ──────────────────────────────────────────────────────
