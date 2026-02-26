@@ -63,12 +63,19 @@ async fn handle_socket(socket: WebSocket, config: Arc<RuntimeConfig>) {
     });
 
     // Launch the BBS session on a dedicated thread.
-    bbs_runtime::spawn_session(terminal, config);
+    bbs_runtime::spawn_session(terminal.clone(), config);
 
-    // Read pump: WebSocket frames → byte channel
+    // Read pump: WebSocket frames → byte channel.
+    // A 5-byte binary frame [0x01, ch, cl, rh, rl] is a resize notification.
     while let Some(msg) = receiver.next().await {
         match msg {
             Ok(Message::Binary(data)) => {
+                if data.len() == 5 && data[0] == 1 {
+                    let cols = u16::from_be_bytes([data[1], data[2]]);
+                    let rows = u16::from_be_bytes([data[3], data[4]]);
+                    terminal.set_size(cols, rows);
+                    continue;
+                }
                 for &b in &data {
                     if byte_tx.send(b).await.is_err() {
                         return;
@@ -111,13 +118,21 @@ const XTERM_HTML: &str = r#"<!DOCTYPE html>
     term.loadAddon(fitAddon);
     term.open(document.getElementById('terminal'));
     fitAddon.fit();
-    window.addEventListener('resize', () => fitAddon.fit());
 
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     const ws = new WebSocket(proto + '://' + location.host + '/ws');
     ws.binaryType = 'arraybuffer';
 
-    ws.onopen  = () => term.focus();
+    function sendResize() {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      const buf = new Uint8Array(5);
+      buf[0] = 1;
+      buf[1] = term.cols >> 8;  buf[2] = term.cols & 0xff;
+      buf[3] = term.rows >> 8;  buf[4] = term.rows & 0xff;
+      ws.send(buf);
+    }
+
+    ws.onopen  = () => { fitAddon.fit(); sendResize(); term.focus(); };
     ws.onclose = () => term.write('\r\n\x1b[31mConnection closed.\x1b[0m\r\n');
     ws.onerror = () => term.write('\r\n\x1b[31mConnection error.\x1b[0m\r\n');
 
@@ -134,6 +149,8 @@ const XTERM_HTML: &str = r#"<!DOCTYPE html>
         ws.send(new TextEncoder().encode(data));
       }
     });
+
+    window.addEventListener('resize', () => { fitAddon.fit(); sendResize(); });
   </script>
 </body>
 </html>

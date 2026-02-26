@@ -62,6 +62,8 @@ impl russh::server::Server for SshServer {
         SshHandler {
             config: Arc::clone(&self.config),
             byte_tx: None,
+            pending_size: (80, 24),
+            terminal: None,
         }
     }
 }
@@ -71,6 +73,8 @@ impl russh::server::Server for SshServer {
 struct SshHandler {
     config: Arc<RuntimeConfig>,
     byte_tx: Option<mpsc::Sender<u8>>,
+    pending_size: (u16, u16),       // captured from pty_request
+    terminal: Option<Terminal>,     // kept for window_change_request
 }
 
 #[async_trait]
@@ -105,13 +109,14 @@ impl russh::server::Handler for SshHandler {
         &mut self,
         _channel: ChannelId,
         _term: &str,
-        _col_width: u32,
-        _row_height: u32,
+        col_width: u32,
+        row_height: u32,
         _pix_width: u32,
         _pix_height: u32,
         _modes: &[(russh::Pty, u32)],
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.pending_size = (col_width as u16, row_height as u16);
         Ok(())
     }
 
@@ -126,6 +131,8 @@ impl russh::server::Handler for SshHandler {
         self.byte_tx = Some(byte_tx);
 
         let terminal = Terminal::new(out_tx, byte_rx);
+        terminal.set_size(self.pending_size.0, self.pending_size.1);
+        self.terminal = Some(terminal.clone());
         let handle = session.handle();
 
         // Write pump: drain the output channel → SSH channel data
@@ -140,6 +147,21 @@ impl russh::server::Handler for SshHandler {
 
         bbs_runtime::spawn_session(terminal, Arc::clone(&self.config));
 
+        Ok(())
+    }
+
+    async fn window_change_request(
+        &mut self,
+        _channel: ChannelId,
+        col_width: u32,
+        row_height: u32,
+        _pix_width: u32,
+        _pix_height: u32,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(term) = &self.terminal {
+            term.set_size(col_width as u16, row_height as u16);
+        }
         Ok(())
     }
 

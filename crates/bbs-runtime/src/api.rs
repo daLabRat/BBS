@@ -179,15 +179,82 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         })?,
     )?;
 
+    // --- bbs.terminal {cols(), rows()} ---
+    {
+        let term_tbl = lua.create_table()?;
+        {
+            let t = terminal.clone();
+            term_tbl.set(
+                "cols",
+                lua.create_function(move |_, ()| Ok(t.size().0 as i64))?,
+            )?;
+        }
+        {
+            let t = terminal.clone();
+            term_tbl.set(
+                "rows",
+                lua.create_function(move |_, ()| Ok(t.size().1 as i64))?,
+            )?;
+        }
+        bbs.set("terminal", term_tbl)?;
+    }
+
     // --- bbs.pager(text) ---
+    // Paginating viewer.  Shows `rows-2` lines per page, then prompts:
+    //   Space/other = next page, Enter = one line, Q = quit.
     {
         let tx = tx.clone();
+        let rx = rx.clone();
+        let terminal = terminal.clone();
         bbs.set(
             "pager",
             lua.create_async_function(move |_lua, text: String| {
                 let tx = tx.clone();
+                let rx = rx.clone();
+                let terminal = terminal.clone();
                 async move {
-                    tx.send(Bytes::from(format!("{text}\r\n"))).await.ok();
+                    let lines: Vec<&str> = text.split('\n').collect();
+                    let total = lines.len();
+                    let mut shown: usize = 0;
+
+                    while shown < total {
+                        let (_, rows) = terminal.size();
+                        let page_size = (rows as usize).saturating_sub(2).max(1);
+                        let end = (shown + page_size).min(total);
+
+                        for line in &lines[shown..end] {
+                            tx.send(Bytes::from(format!("{line}\r\n"))).await.ok();
+                        }
+                        shown = end;
+
+                        if shown >= total {
+                            break;
+                        }
+
+                        let pct = shown * 100 / total;
+                        let prompt = format!(
+                            "\r\x1b[7m-- More ({pct}%) [Space=page Enter=line Q=quit] --\x1b[0m"
+                        );
+                        tx.send(Bytes::from(prompt)).await.ok();
+
+                        let key = {
+                            let mut guard = rx.lock().await;
+                            guard.recv().await
+                        };
+
+                        // Clear the prompt line before continuing
+                        tx.send(Bytes::from_static(b"\r\x1b[2K")).await.ok();
+
+                        match key {
+                            None => break,
+                            Some(b'q') | Some(b'Q') => break,
+                            Some(b'\r') | Some(b'\n') => {
+                                // one line already shown; rewind so we show one more
+                                shown = shown.saturating_sub(page_size - 1);
+                            }
+                            _ => {} // Space or anything else → full next page already set
+                        }
+                    }
                     Ok(())
                 }
             })?,

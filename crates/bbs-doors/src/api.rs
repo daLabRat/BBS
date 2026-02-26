@@ -145,6 +145,26 @@ pub fn register(
         )?;
     }
 
+    // door.terminal {cols(), rows()}
+    {
+        let term_tbl = lua.create_table()?;
+        {
+            let t = terminal.clone();
+            term_tbl.set(
+                "cols",
+                lua.create_function(move |_, ()| Ok(t.size().0 as i64))?,
+            )?;
+        }
+        {
+            let t = terminal.clone();
+            term_tbl.set(
+                "rows",
+                lua.create_function(move |_, ()| Ok(t.size().1 as i64))?,
+            )?;
+        }
+        door.set("terminal", term_tbl)?;
+    }
+
     // door.ansi(name) -> string
     door.set(
         "ansi",

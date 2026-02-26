@@ -70,7 +70,7 @@ async fn handle_connection(
     let terminal = Terminal::new(out_tx, byte_rx);
 
     tokio::spawn(write_pump(write_half, out_rx));
-    tokio::spawn(read_pump(read_half, byte_tx));
+    tokio::spawn(read_pump(read_half, byte_tx, terminal.clone()));
 
     // Session runs on its own OS thread with a current-thread Tokio runtime.
     bbs_runtime::spawn_session(terminal, config);
@@ -89,7 +89,7 @@ async fn write_pump(mut writer: OwnedWriteHalf, mut rx: mpsc::Receiver<Bytes>) {
 
 /// Read pump: read from TCP, strip telnet IAC sequences, normalise CR/LF,
 /// and forward raw input bytes to the session channel.
-async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
+async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>, terminal: Terminal) {
     #[derive(Debug)]
     enum State {
         Data,
@@ -175,7 +175,7 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
 
                 State::SbIac => {
                     if byte == SE {
-                        process_subneg(&subneg);
+                        process_subneg(&subneg, &terminal);
                         subneg.clear();
                         state = State::Data;
                     } else {
@@ -200,10 +200,11 @@ async fn emit_data_byte(byte: u8, prev_cr: &mut bool, tx: &mpsc::Sender<u8>) -> 
     }
 }
 
-fn process_subneg(buf: &[u8]) {
+fn process_subneg(buf: &[u8], terminal: &Terminal) {
     if buf.first() == Some(&OPT_NAWS) && buf.len() >= 5 {
-        let w = u16::from_be_bytes([buf[1], buf[2]]);
-        let h = u16::from_be_bytes([buf[3], buf[4]]);
-        debug!("NAWS: terminal size {w}x{h}");
+        let cols = u16::from_be_bytes([buf[1], buf[2]]);
+        let rows = u16::from_be_bytes([buf[3], buf[4]]);
+        terminal.set_size(cols, rows);
+        debug!("NAWS: terminal size {cols}x{rows}");
     }
 }
