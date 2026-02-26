@@ -10,4 +10,4 @@ serde     = { workspace = true }
 sqlx      = { workspace = true }
 tokio     = { workspace = true }
 tracing   = { workspace = true }
-argon2    = "0.5"
+argon2    = { version = "0.5", features = ["std"] }

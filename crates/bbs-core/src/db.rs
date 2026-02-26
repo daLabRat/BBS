@@ -453,6 +453,49 @@ impl Database {
         Ok(())
     }
 
+    // ── Search ────────────────────────────────────────────────────────────────
+
+    /// Full-text search across message subjects and bodies, newest first.
+    /// Returns (Message, board_name, author_name).  Capped at 50 results.
+    pub async fn search_messages(
+        &self,
+        query: &str,
+    ) -> Result<Vec<(Message, String, String)>> {
+        let pattern = format!("%{query}%");
+        let rows = sqlx::query(
+            "SELECT m.id, m.board_id, m.author_id, m.subject, m.body,
+                    m.created_at, m.parent_id, u.username, b.name AS board_name
+             FROM messages m
+             JOIN users  u ON u.id = m.author_id
+             JOIN boards b ON b.id = m.board_id
+             WHERE m.subject LIKE ? OR m.body LIKE ?
+             ORDER BY m.created_at DESC
+             LIMIT 50",
+        )
+        .bind(&pattern)
+        .bind(&pattern)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let msg = Message {
+                    id: row.get("id"),
+                    board_id: row.get("board_id"),
+                    author_id: row.get("author_id"),
+                    subject: row.get("subject"),
+                    body: row.get("body"),
+                    created_at: row.get("created_at"),
+                    parent_id: row.get("parent_id"),
+                };
+                let board_name: String = row.get("board_name");
+                let author: String = row.get("username");
+                (msg, board_name, author)
+            })
+            .collect())
+    }
+
     // ── Board management ──────────────────────────────────────────────────────
 
     pub async fn create_board(&self, name: &str, description: &str) -> Result<i64> {
@@ -499,6 +542,16 @@ impl Database {
                 )
             })
             .collect())
+    }
+
+    /// Set the is_sysop flag for a user.
+    pub async fn set_sysop(&self, user_id: i64, is_sysop: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET is_sysop = ? WHERE id = ?")
+            .bind(is_sysop)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     /// Set the banned flag for a user.

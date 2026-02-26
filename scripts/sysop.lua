@@ -32,6 +32,28 @@ local function list_users()
     return users
 end
 
+local function promote_user(users)
+    local choice = bbs.read_line("Promote user # to sysop (or Enter to cancel): ")
+    local n = tonumber(choice)
+    if not n or not users[n] then bbs.writeln("Cancelled.") return end
+    local u = users[n]
+    if u.is_sysop then bbs.writeln(u.name .. " is already a sysop.") return end
+    local ok, err = bbs.sysop.promote(u.name)
+    if ok then bbs.writeln(u.name .. " promoted to sysop.")
+    else bbs.writeln("Error: " .. (err or "unknown")) end
+end
+
+local function demote_user(users)
+    local choice = bbs.read_line("Demote sysop # (or Enter to cancel): ")
+    local n = tonumber(choice)
+    if not n or not users[n] then bbs.writeln("Cancelled.") return end
+    local u = users[n]
+    if not u.is_sysop then bbs.writeln(u.name .. " is not a sysop.") return end
+    local ok, err = bbs.sysop.demote(u.name)
+    if ok then bbs.writeln(u.name .. " demoted.")
+    else bbs.writeln("Error: " .. (err or "unknown")) end
+end
+
 local function ban_user(users)
     local choice = bbs.read_line("Ban user # (or Enter to cancel): ")
     local n = tonumber(choice)
@@ -55,7 +77,7 @@ end
 
 local function users_panel()
     local users = list_users()
-    bbs.writeln("  [B] Ban   [U] Unban   [Q] Back")
+    bbs.writeln("  [B] Ban   [U] Unban   [P] Promote   [D] Demote   [Q] Back")
     bbs.writeln("")
     local key = bbs.read_key()
     if key == nil then return end
@@ -64,6 +86,10 @@ local function users_panel()
         ban_user(users)
     elseif key == "U" then
         unban_user(users)
+    elseif key == "P" then
+        promote_user(users)
+    elseif key == "D" then
+        demote_user(users)
     end
 end
 

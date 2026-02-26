@@ -2,6 +2,8 @@ pub mod auth;
 pub mod board;
 pub mod db;
 pub mod message;
+#[cfg(test)]
+mod tests;
 pub mod user;
 
 pub use auth::{hash_password, verify_password};

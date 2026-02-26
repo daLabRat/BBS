@@ -107,6 +107,35 @@ function reply_to(board, parent)
     bbs.writeln("Reply posted!")
 end
 
+local function search_messages()
+    local query = bbs.read_line("Search: ")
+    if not query or #query == 0 then return end
+    local results = bbs.boards.search(query)
+    if #results == 0 then
+        bbs.writeln("No results for '" .. query .. "'.")
+        return
+    end
+    bbs.writeln("")
+    bbs.writeln(string.format("  %-3s  %-16s  %-28s  %s", "#", "Board", "Subject", "From"))
+    bbs.writeln("  " .. string.rep("-", 60))
+    for i, r in ipairs(results) do
+        bbs.writeln(string.format("  [%2d] %-16s  %-28s  %s",
+            i, r.board_name:sub(1,16), r.subject:sub(1,28), r.author))
+    end
+    bbs.writeln("")
+    local choice = bbs.read_line("Read # (or Enter to cancel): ")
+    local n = tonumber(choice)
+    if not n or not results[n] then return end
+    local r = results[n]
+    bbs.writeln(string.rep("-", 60))
+    bbs.writeln("Board  : " .. r.board_name)
+    bbs.writeln("Subject: " .. r.subject)
+    bbs.writeln("From   : " .. r.author)
+    bbs.writeln(os.date("Date   : %Y-%m-%d %H:%M", r.created_at))
+    bbs.writeln(string.rep("-", 60))
+    bbs.pager(r.body)
+end
+
 local function post_message(board)
     bbs.writeln("")
     local subject = bbs.read_line("Subject: ")
@@ -129,13 +158,20 @@ function M.run()
     local boards = list_boards()
     if not boards then return end
 
-    local choice = bbs.read_line("Select board (or Enter to cancel): ")
+    bbs.writeln("  Select a board #, or [F] to search all boards.")
+    bbs.writeln("")
+    local choice = bbs.read_line("Choice: ")
+    if not choice then return end
+    if choice:upper() == "F" then
+        search_messages()
+        return
+    end
     local n = tonumber(choice)
     if not n or not boards[n] then return end
 
     local board = boards[n]
     bbs.writeln("")
-    bbs.writeln("  [R] Read   [P] Post   [Q] Back")
+    bbs.writeln("  [R] Read   [P] Post   [F] Find   [Q] Back")
     local key = bbs.read_key()
     if key == nil then return end
     key = key:upper()
@@ -144,6 +180,8 @@ function M.run()
         read_board(board)
     elseif key == "P" then
         post_message(board)
+    elseif key == "F" then
+        search_messages()
     end
 end
 

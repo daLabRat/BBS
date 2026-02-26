@@ -481,6 +481,33 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
             )?;
         }
 
+        // bbs.boards.search(query) -> [{id, board_name, subject, author, created_at, body}]
+        {
+            let db = Arc::clone(&db);
+            boards_tbl.set(
+                "search",
+                lua.create_async_function(move |lua, query: String| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let rows =
+                            db.search_messages(&query).await.map_err(LuaError::external)?;
+                        let result = lua.create_table()?;
+                        for (i, (msg, board_name, author)) in rows.into_iter().enumerate() {
+                            let t = lua.create_table()?;
+                            t.set("id", msg.id)?;
+                            t.set("board_name", board_name)?;
+                            t.set("subject", msg.subject)?;
+                            t.set("author", author)?;
+                            t.set("created_at", msg.created_at)?;
+                            t.set("body", msg.body)?;
+                            result.set(i + 1, t)?;
+                        }
+                        Ok(result)
+                    }
+                })?,
+            )?;
+        }
+
         // bbs.boards.post_reply(board_id, parent_id, subject, body) -> nil
         {
             let db = Arc::clone(&db);
@@ -632,6 +659,46 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                             None => Ok((LuaValue::Nil, LuaValue::String(lua.create_string("No such user")?))),
                             Some(u) => {
                                 db.set_banned(u.id, false).await.map_err(LuaError::external)?;
+                                Ok((LuaValue::Boolean(true), LuaValue::Nil))
+                            }
+                        }
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.promote(username) -> true | nil, errmsg
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "promote",
+                lua.create_async_function(move |lua, username: String| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        match db.find_user_by_username(&username).await.map_err(LuaError::external)? {
+                            None => Ok((LuaValue::Nil, LuaValue::String(lua.create_string("No such user")?))),
+                            Some(u) => {
+                                db.set_sysop(u.id, true).await.map_err(LuaError::external)?;
+                                Ok((LuaValue::Boolean(true), LuaValue::Nil))
+                            }
+                        }
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.demote(username) -> true | nil, errmsg
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "demote",
+                lua.create_async_function(move |lua, username: String| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        match db.find_user_by_username(&username).await.map_err(LuaError::external)? {
+                            None => Ok((LuaValue::Nil, LuaValue::String(lua.create_string("No such user")?))),
+                            Some(u) => {
+                                db.set_sysop(u.id, false).await.map_err(LuaError::external)?;
                                 Ok((LuaValue::Boolean(true), LuaValue::Nil))
                             }
                         }
