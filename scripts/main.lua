@@ -9,6 +9,15 @@ local function show_welcome()
     bbs.clear()
     bbs.writeln(bbs.ansi("bold") .. "Welcome to the BBS!" .. bbs.ansi("reset"))
     bbs.writeln("")
+    local callers = bbs.callers.recent(10)
+    if #callers > 0 then
+        bbs.writeln("Last callers:")
+        for _, c in ipairs(callers) do
+            bbs.writeln(string.format("  %-20s  %s",
+                c.name, os.date("%Y-%m-%d %H:%M", c.time)))
+        end
+        bbs.writeln("")
+    end
 end
 
 local function main()

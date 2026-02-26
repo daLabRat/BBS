@@ -703,6 +703,33 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         bbs.set("bulletins", btbl)?;
     }
 
+    // --- bbs.callers ---
+    {
+        let db = Arc::clone(&config.db);
+        let callers_tbl = lua.create_table()?;
+
+        // bbs.callers.recent(n) -> [{name, time}]
+        callers_tbl.set(
+            "recent",
+            lua.create_async_function(move |lua, limit: i64| {
+                let db = Arc::clone(&db);
+                async move {
+                    let rows = db.last_callers(limit).await.map_err(LuaError::external)?;
+                    let result = lua.create_table()?;
+                    for (i, (name, time)) in rows.into_iter().enumerate() {
+                        let t = lua.create_table()?;
+                        t.set("name", name)?;
+                        t.set("time", time)?;
+                        result.set(i + 1, t)?;
+                    }
+                    Ok(result)
+                }
+            })?,
+        )?;
+
+        bbs.set("callers", callers_tbl)?;
+    }
+
     lua.globals().set("bbs", bbs)?;
 
     Ok(())

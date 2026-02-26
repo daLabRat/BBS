@@ -430,4 +430,24 @@ impl Database {
             .await?;
         Ok(())
     }
+
+    // ── Callers ───────────────────────────────────────────────────────────────
+
+    /// Most recent callers, newest first.
+    /// Returns (username, last_login unix timestamp).
+    pub async fn last_callers(&self, limit: i64) -> Result<Vec<(String, i64)>> {
+        let rows = sqlx::query(
+            "SELECT username, last_login FROM users
+             WHERE last_login IS NOT NULL
+             ORDER BY last_login DESC
+             LIMIT ?",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.get::<String, _>("username"), r.get::<i64, _>("last_login")))
+            .collect())
+    }
 }
