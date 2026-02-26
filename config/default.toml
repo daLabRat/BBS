@@ -1,0 +1,29 @@
+[server]
+# Human-readable name shown in banners and NNTP headers
+name = "My BBS"
+sysop = "sysop"
+
+[database]
+url = "sqlite:bbs.db"
+
+[paths]
+scripts = "scripts"
+doors   = "doors"
+assets  = "assets"
+
+[telnet]
+enabled = true
+bind    = "0.0.0.0:2323"
+
+[ssh]
+enabled = true
+bind    = "0.0.0.0:2222"
+# host_key = "config/host_key"  # generate with: ssh-keygen -t ed25519 -f config/host_key
+
+[http]
+enabled = true
+bind    = "0.0.0.0:8080"
+
+[nntp]
+enabled = true
+bind    = "0.0.0.0:1119"

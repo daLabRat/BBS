@@ -1,0 +1,13 @@
+[package]
+name    = "bbs-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow    = { workspace = true }
+thiserror = { workspace = true }
+serde     = { workspace = true }
+sqlx      = { workspace = true }
+tokio     = { workspace = true }
+tracing   = { workspace = true }
+argon2    = "0.5"

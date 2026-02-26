@@ -1,0 +1,22 @@
+[package]
+name    = "bbs-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bbs-server"
+path = "src/main.rs"
+
+[dependencies]
+anyhow             = { workspace = true }
+tokio              = { workspace = true }
+tracing            = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde              = { workspace = true }
+bbs-core           = { path = "../bbs-core" }
+bbs-runtime        = { path = "../bbs-runtime" }
+bbs-telnet         = { path = "../bbs-telnet" }
+bbs-ssh            = { path = "../bbs-ssh" }
+bbs-web            = { path = "../bbs-web" }
+bbs-nntp           = { path = "../bbs-nntp" }
+config             = "0.14"

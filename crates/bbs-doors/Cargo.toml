@@ -1,0 +1,15 @@
+[package]
+name    = "bbs-doors"
+version = "0.1.0"
+edition = "2021"
+description = "Portable Lua door-game runtime for BBS systems"
+
+[dependencies]
+anyhow    = { workspace = true }
+thiserror = { workspace = true }
+tokio     = { workspace = true }
+tracing   = { workspace = true }
+mlua      = { workspace = true }
+sqlx      = { workspace = true }
+serde     = { workspace = true }
+serde_json = { workspace = true }
