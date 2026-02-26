@@ -182,7 +182,13 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                     for ext in &["ans", "asc", "txt"] {
                         let path = ansi_dir.join(format!("{name}.{ext}"));
                         if let Ok(content) = tokio::fs::read_to_string(&path).await {
-                            return Ok(LuaValue::String(lua.create_string(content.as_bytes())?));
+                            // Normalise bare \n → \r\n for telnet compatibility.
+                            let normalised = content
+                                .replace("\r\n", "\n")
+                                .replace('\n', "\r\n");
+                            return Ok(LuaValue::String(
+                                lua.create_string(normalised.as_bytes())?,
+                            ));
                         }
                     }
                     Ok(LuaValue::Nil)
