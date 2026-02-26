@@ -1,13 +1,15 @@
 -- menu.lua: Main menu loop.
 
-local boards = require("boards")
-local mail   = require("mail")
+local boards    = require("boards")
+local bulletins = require("bulletins")
+local mail      = require("mail")
 
 local M = {}
 
 local MAIN_MENU = {
     title = "Main Menu",
     items = {
+        { key = "B", label = "Bulletins",         action = "bulletins" },
         { key = "M", label = "Message boards",  action = "boards"  },
         { key = "D", label = "Door games",       action = "doors"   },
         { key = "E", label = "E-mail / Mail",    action = "mail"    },
@@ -63,7 +65,9 @@ function M.run()
             running = false
         else
             key = key:upper()
-            if key == "M" then
+            if key == "B" then
+                bulletins.run()
+            elseif key == "M" then
                 boards.run()
             elseif key == "D" then
                 doors_menu()

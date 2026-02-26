@@ -358,4 +358,76 @@ impl Database {
         .await?;
         Ok(n)
     }
+
+    // ── Bulletins ─────────────────────────────────────────────────────────────
+
+    /// All active bulletins, newest first.
+    /// Returns (id, author_name, title, posted_at).
+    pub async fn list_bulletins(&self) -> Result<Vec<(i64, String, String, i64)>> {
+        let rows = sqlx::query(
+            "SELECT b.id, u.username AS author, b.title, b.posted_at
+             FROM bulletins b
+             JOIN users u ON u.id = b.author_id
+             WHERE b.is_active = 1
+             ORDER BY b.posted_at DESC",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.get("id"),
+                    r.get::<String, _>("author"),
+                    r.get::<String, _>("title"),
+                    r.get::<i64, _>("posted_at"),
+                )
+            })
+            .collect())
+    }
+
+    /// Fetch a single bulletin by id (active or not).
+    /// Returns (id, author_name, title, body, posted_at).
+    pub async fn get_bulletin(&self, id: i64) -> Result<Option<(i64, String, String, String, i64)>> {
+        let row = sqlx::query(
+            "SELECT b.id, u.username AS author, b.title, b.body, b.posted_at
+             FROM bulletins b
+             JOIN users u ON u.id = b.author_id
+             WHERE b.id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| {
+            (
+                r.get("id"),
+                r.get::<String, _>("author"),
+                r.get::<String, _>("title"),
+                r.get::<String, _>("body"),
+                r.get::<i64, _>("posted_at"),
+            )
+        }))
+    }
+
+    /// Post a new bulletin; returns new id.
+    pub async fn post_bulletin(&self, author_id: i64, title: &str, body: &str) -> Result<i64> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO bulletins (author_id, title, body) VALUES (?, ?, ?) RETURNING id",
+        )
+        .bind(author_id)
+        .bind(title)
+        .bind(body)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Soft-delete a bulletin (sets is_active = 0).
+    pub async fn delete_bulletin(&self, id: i64) -> Result<()> {
+        sqlx::query("UPDATE bulletins SET is_active = 0 WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }

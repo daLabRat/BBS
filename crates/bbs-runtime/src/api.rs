@@ -610,6 +610,99 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         bbs.set("mail", mail_tbl)?;
     }
 
+    // --- bbs.bulletins ---
+    {
+        let db = Arc::clone(&config.db);
+        let btbl = lua.create_table()?;
+
+        // bbs.bulletins.list() -> [{id, author, title, posted_at}]
+        {
+            let db = Arc::clone(&db);
+            btbl.set(
+                "list",
+                lua.create_async_function(move |lua, ()| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let rows = db.list_bulletins().await.map_err(LuaError::external)?;
+                        let result = lua.create_table()?;
+                        for (i, (id, author, title, posted_at)) in rows.into_iter().enumerate() {
+                            let t = lua.create_table()?;
+                            t.set("id", id)?;
+                            t.set("author", author)?;
+                            t.set("title", title)?;
+                            t.set("posted_at", posted_at)?;
+                            result.set(i + 1, t)?;
+                        }
+                        Ok(result)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.bulletins.get(id) -> {id, author, title, body, posted_at} | nil
+        {
+            let db = Arc::clone(&db);
+            btbl.set(
+                "get",
+                lua.create_async_function(move |lua, id: i64| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        match db.get_bulletin(id).await.map_err(LuaError::external)? {
+                            None => Ok(LuaValue::Nil),
+                            Some((id, author, title, body, posted_at)) => {
+                                let t = lua.create_table()?;
+                                t.set("id", id)?;
+                                t.set("author", author)?;
+                                t.set("title", title)?;
+                                t.set("body", body)?;
+                                t.set("posted_at", posted_at)?;
+                                Ok(LuaValue::Table(t))
+                            }
+                        }
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.bulletins.post(title, body) -> id
+        {
+            let db = Arc::clone(&db);
+            btbl.set(
+                "post",
+                lua.create_async_function(move |lua, (title, body): (String, String)| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                        let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                        let my_id: i64 = user_tbl.get("id")?;
+                        let id = db
+                            .post_bulletin(my_id, &title, &body)
+                            .await
+                            .map_err(LuaError::external)?;
+                        Ok(id)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.bulletins.delete(id) -> nil
+        {
+            let db = Arc::clone(&db);
+            btbl.set(
+                "delete",
+                lua.create_async_function(move |_lua, id: i64| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        db.delete_bulletin(id).await.map_err(LuaError::external)?;
+                        Ok(())
+                    }
+                })?,
+            )?;
+        }
+
+        bbs.set("bulletins", btbl)?;
+    }
+
     lua.globals().set("bbs", bbs)?;
 
     Ok(())

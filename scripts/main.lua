@@ -1,8 +1,9 @@
 -- main.lua: BBS session entry point.
 -- Called once per user connection by bbs-runtime.
 
-local auth  = require("auth")
-local menu  = require("menu")
+local auth      = require("auth")
+local bulletins = require("bulletins")
+local menu      = require("menu")
 
 local function show_welcome()
     bbs.clear()
@@ -21,7 +22,9 @@ local function main()
     end
 
     bbs.writeln("Hello, " .. bbs.user.name .. "!")
-    bbs.writeln("")
+
+    -- Show any active bulletins after login
+    bulletins.show_new()
 
     -- Hand off to the main menu loop
     menu.run()
