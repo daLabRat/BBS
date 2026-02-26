@@ -250,4 +250,112 @@ impl Database {
         .await?;
         Ok(id)
     }
+
+    // ── Mail ─────────────────────────────────────────────────────────────────
+
+    /// Inbox for recipient_id, newest first.
+    /// Returns (id, sender_name, subject, sent_at, is_read, body).
+    pub async fn mail_inbox(
+        &self,
+        recipient_id: i64,
+    ) -> Result<Vec<(i64, String, String, i64, bool, String)>> {
+        let rows = sqlx::query(
+            "SELECT m.id, u.username AS sender, m.subject, m.sent_at,
+                    m.read_at, m.body
+             FROM mail m
+             JOIN users u ON u.id = m.sender_id
+             WHERE m.recipient_id = ?
+             ORDER BY m.sent_at DESC",
+        )
+        .bind(recipient_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.get("id"),
+                    r.get::<String, _>("sender"),
+                    r.get::<String, _>("subject"),
+                    r.get::<i64, _>("sent_at"),
+                    r.get::<Option<i64>, _>("read_at").is_some(),
+                    r.get::<String, _>("body"),
+                )
+            })
+            .collect())
+    }
+
+    /// Sent items for sender_id, newest first.
+    /// Returns (id, recipient_name, subject, sent_at).
+    pub async fn mail_sent(
+        &self,
+        sender_id: i64,
+    ) -> Result<Vec<(i64, String, String, i64)>> {
+        let rows = sqlx::query(
+            "SELECT m.id, u.username AS recipient, m.subject, m.sent_at
+             FROM mail m
+             JOIN users u ON u.id = m.recipient_id
+             WHERE m.sender_id = ?
+             ORDER BY m.sent_at DESC",
+        )
+        .bind(sender_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.get("id"),
+                    r.get::<String, _>("recipient"),
+                    r.get::<String, _>("subject"),
+                    r.get::<i64, _>("sent_at"),
+                )
+            })
+            .collect())
+    }
+
+    /// Send a mail message; returns new id.
+    pub async fn mail_send(
+        &self,
+        sender_id: i64,
+        recipient_id: i64,
+        subject: &str,
+        body: &str,
+    ) -> Result<i64> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO mail (sender_id, recipient_id, subject, body)
+             VALUES (?, ?, ?, ?) RETURNING id",
+        )
+        .bind(sender_id)
+        .bind(recipient_id)
+        .bind(subject)
+        .bind(body)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Mark a mail item as read (no-op if already read; checks recipient ownership).
+    pub async fn mail_mark_read(&self, mail_id: i64, reader_id: i64) -> Result<()> {
+        sqlx::query(
+            "UPDATE mail SET read_at = unixepoch()
+             WHERE id = ? AND recipient_id = ? AND read_at IS NULL",
+        )
+        .bind(mail_id)
+        .bind(reader_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// Count unread mail for a user.
+    pub async fn mail_unread_count(&self, recipient_id: i64) -> Result<i64> {
+        let n: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM mail WHERE recipient_id = ? AND read_at IS NULL",
+        )
+        .bind(recipient_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(n)
+    }
 }
