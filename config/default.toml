@@ -22,7 +22,7 @@ bind    = "0.0.0.0:2222"
 
 [http]
 enabled = true
-bind    = "0.0.0.0:8080"
+bind    = "0.0.0.0:8088"
 
 [nntp]
 enabled = true
