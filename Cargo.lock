@@ -246,6 +246,7 @@ dependencies = [
  "bbs-core",
  "bbs-doors",
  "bbs-tui",
+ "bytes",
  "mlua",
  "thiserror",
  "tokio",
@@ -290,6 +291,7 @@ dependencies = [
  "anyhow",
  "bbs-runtime",
  "bbs-tui",
+ "bytes",
  "thiserror",
  "tokio",
  "tracing",
@@ -300,6 +302,7 @@ name = "bbs-tui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "thiserror",
  "tokio",
  "tracing",

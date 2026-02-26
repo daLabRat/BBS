@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 tokio     = { workspace = true }
 tracing   = { workspace = true }
 mlua      = { workspace = true }
+bytes     = { workspace = true }
 bbs-core  = { path = "../bbs-core" }
 bbs-doors = { path = "../bbs-doors" }
 bbs-tui   = { path = "../bbs-tui" }

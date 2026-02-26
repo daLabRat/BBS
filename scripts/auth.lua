@@ -22,6 +22,9 @@ function M.login()
 
     -- TODO: call bbs.auth.login(username, password) once Rust API is wired
     -- For now, accept any credentials for development
+    bbs.user.name     = username
+    bbs.user.id       = 0
+    bbs.user.is_sysop = (username:lower() == "sysop")
     bbs.writeln("[auth stub] Logged in as: " .. username)
     return true
 end
@@ -43,6 +46,9 @@ function M.register()
     end
 
     -- TODO: call bbs.auth.register(username, password) once Rust API is wired
+    bbs.user.name     = username
+    bbs.user.id       = 0
+    bbs.user.is_sysop = (username:lower() == "sysop")
     bbs.writeln("Account created! Welcome, " .. username .. "!")
     return true
 end

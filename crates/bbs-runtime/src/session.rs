@@ -1,26 +1,38 @@
-use anyhow::Result;
-use bbs_core::User;
+//! One Lua VM per user session.  Loads scripts/main.lua and runs it.
 
-/// One Lua VM instance per connected user session.
-/// Loads scripts/main.lua and calls it with the session context.
+use std::sync::Arc;
+
+use anyhow::Result;
+use bbs_tui::Terminal;
+
+use crate::{api, RuntimeConfig};
+
 pub struct Session {
-    pub user: Option<User>,
-    // TODO: mlua::Lua instance, I/O sender/receiver
+    terminal: Terminal,
+    config: Arc<RuntimeConfig>,
 }
 
 impl Session {
-    pub fn new() -> Self {
-        Self { user: None }
+    pub fn new(terminal: Terminal, config: Arc<RuntimeConfig>) -> Self {
+        Self { terminal, config }
     }
 
-    pub async fn run(&mut self, _scripts_dir: &str) -> Result<()> {
-        // TODO: create Lua VM, register bbs.* API, load main.lua, call main()
+    pub async fn run(self) -> Result<()> {
+        let lua = mlua::Lua::new();
+
+        // Set package.path so require("auth") etc. resolve from scripts_dir.
+        let scripts_dir = self.config.scripts_dir.clone();
+        let pkg: mlua::Table = lua.globals().get("package")?;
+        pkg.set("path", format!("{}/?.lua", scripts_dir.display()))?;
+
+        api::register(&lua, self.terminal)?;
+
+        let src = tokio::fs::read_to_string(scripts_dir.join("main.lua")).await?;
+        lua.load(&src)
+            .set_name("main.lua")
+            .call_async::<(), ()>(())
+            .await?;
+
         Ok(())
-    }
-}
-
-impl Default for Session {
-    fn default() -> Self {
-        Self::new()
     }
 }

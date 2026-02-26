@@ -1,6 +1,9 @@
 //! Shared ANSI/VT100 utilities and terminal primitives.
 //! Used by bbs-telnet and bbs-ssh crates.
 
+pub mod terminal;
+pub use terminal::Terminal;
+
 /// Named ANSI escape sequences.
 pub mod ansi {
     pub const RESET: &str = "\x1b[0m";
