@@ -223,6 +223,36 @@ async fn test_search_messages() {
     assert!(none.is_empty());
 }
 
+// ── Board visits ──────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_board_visits_counts() {
+    let db = test_db().await;
+    let hash = hash_password("pass").unwrap();
+    let user = db.create_user("lee", &hash).await.unwrap();
+    let board_id = db.create_board("Visits", "").await.unwrap();
+
+    // Before any posts: both counts are 0
+    let rows = db.list_boards_with_counts(user.id).await.unwrap();
+    let entry = rows.iter().find(|(b, _, _)| b.id == board_id).unwrap();
+    assert_eq!(entry.1, 0); // total
+    assert_eq!(entry.2, 0); // new
+
+    // Post a message; not yet visited → counts as new
+    db.post_message(board_id, user.id, "Hello", "World").await.unwrap();
+    let rows = db.list_boards_with_counts(user.id).await.unwrap();
+    let entry = rows.iter().find(|(b, _, _)| b.id == board_id).unwrap();
+    assert_eq!(entry.1, 1); // total
+    assert_eq!(entry.2, 1); // new (never visited)
+
+    // Mark visited; new count should drop to 0
+    db.mark_board_visited(user.id, board_id).await.unwrap();
+    let rows = db.list_boards_with_counts(user.id).await.unwrap();
+    let entry = rows.iter().find(|(b, _, _)| b.id == board_id).unwrap();
+    assert_eq!(entry.1, 1); // total still 1
+    assert_eq!(entry.2, 0); // no new messages since visit
+}
+
 // ── Mail ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]

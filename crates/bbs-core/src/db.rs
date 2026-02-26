@@ -496,6 +496,57 @@ impl Database {
             .collect())
     }
 
+    // ── Board visits ──────────────────────────────────────────────────────────
+
+    /// List all boards with total message count and unread count for `user_id`.
+    /// Unread = messages posted after the user's last visit (or all, if never visited).
+    /// Returns (Board, total_count, new_count).
+    pub async fn list_boards_with_counts(
+        &self,
+        user_id: i64,
+    ) -> Result<Vec<(Board, i64, i64)>> {
+        let rows = sqlx::query(
+            "SELECT b.id, b.name, b.description, b.newsgroup_name,
+                    COUNT(m.id) AS total,
+                    COUNT(CASE WHEN m.created_at > COALESCE(v.visited_at, 0) THEN 1 END) AS unread
+             FROM boards b
+             LEFT JOIN messages m ON m.board_id = b.id
+             LEFT JOIN board_visits v ON v.board_id = b.id AND v.user_id = ?
+             GROUP BY b.id
+             ORDER BY b.id",
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                let board = Board {
+                    id: r.get("id"),
+                    name: r.get("name"),
+                    description: r.get("description"),
+                    newsgroup_name: r.get("newsgroup_name"),
+                };
+                let total: i64 = r.get("total");
+                let unread: i64 = r.get("unread");
+                (board, total, unread)
+            })
+            .collect())
+    }
+
+    /// Record (or refresh) that `user_id` has just visited `board_id`.
+    pub async fn mark_board_visited(&self, user_id: i64, board_id: i64) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO board_visits (user_id, board_id, visited_at) VALUES (?, ?, unixepoch())
+             ON CONFLICT(user_id, board_id) DO UPDATE SET visited_at = unixepoch()",
+        )
+        .bind(user_id)
+        .bind(board_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     // ── Board management ──────────────────────────────────────────────────────
 
     pub async fn create_board(&self, name: &str, description: &str) -> Result<i64> {

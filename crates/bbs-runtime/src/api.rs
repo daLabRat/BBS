@@ -408,7 +408,7 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         let db = Arc::clone(&config.db);
         let boards_tbl = lua.create_table()?;
 
-        // bbs.boards.list() -> [{id,name,description}]
+        // bbs.boards.list() -> [{id,name,description,total,new}]
         {
             let db = Arc::clone(&db);
             boards_tbl.set(
@@ -416,16 +416,44 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                 lua.create_async_function(move |lua, ()| {
                     let db = Arc::clone(&db);
                     async move {
-                        let boards = db.list_boards().await.map_err(LuaError::external)?;
+                        let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                        let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                        let user_id: i64 = user_tbl.get("id")?;
+                        let boards = db
+                            .list_boards_with_counts(user_id)
+                            .await
+                            .map_err(LuaError::external)?;
                         let result = lua.create_table()?;
-                        for (i, b) in boards.into_iter().enumerate() {
+                        for (i, (b, total, new)) in boards.into_iter().enumerate() {
                             let t = lua.create_table()?;
                             t.set("id", b.id)?;
                             t.set("name", b.name)?;
                             t.set("description", b.description)?;
+                            t.set("total", total)?;
+                            t.set("new", new)?;
                             result.set(i + 1, t)?;
                         }
                         Ok(result)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.boards.mark_visited(board_id) -> nil
+        {
+            let db = Arc::clone(&db);
+            boards_tbl.set(
+                "mark_visited",
+                lua.create_async_function(move |lua, board_id: i64| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                        let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                        let user_id: i64 = user_tbl.get("id")?;
+                        db.mark_board_visited(user_id, board_id)
+                            .await
+                            .map_err(LuaError::external)?;
+                        Ok(())
                     }
                 })?,
             )?;

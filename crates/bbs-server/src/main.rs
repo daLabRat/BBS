@@ -1,10 +1,10 @@
-use std::sync::Arc;
+use std::{path::Path, sync::Arc};
 
 use anyhow::Result;
 use bbs_core::Database;
 use bbs_runtime::{LoginThrottle, RuntimeConfig, SessionRegistry};
 use config::{Config, File};
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -53,12 +53,9 @@ async fn main() -> Result<()> {
         throttle,
     });
 
-    info!(
-        "Scripts dir: {}  Doors dir: {}  ANSI dir: {}",
-        runtime_config.scripts_dir.display(),
-        runtime_config.doors_dir.display(),
-        runtime_config.ansi_dir.display()
-    );
+    // ── Path validation ──────────────────────────────────────────────────────
+
+    validate_paths(&runtime_config)?;
 
     // ── Bind addresses ───────────────────────────────────────────────────────
 
@@ -84,5 +81,47 @@ async fn main() -> Result<()> {
         bbs_nntp::serve(&nntp_bind, Arc::clone(&db)),
     )?;
 
+    Ok(())
+}
+
+/// Validate runtime paths, creating optional directories when missing.
+fn validate_paths(cfg: &RuntimeConfig) -> Result<()> {
+    // scripts_dir must exist and contain main.lua (the session entry point).
+    if !cfg.scripts_dir.is_dir() {
+        anyhow::bail!(
+            "Scripts directory not found: '{}'. \
+             Set [paths] scripts in config/default.toml.",
+            cfg.scripts_dir.display()
+        );
+    }
+    let entry = cfg.scripts_dir.join("main.lua");
+    if !entry.exists() {
+        anyhow::bail!(
+            "Entry point '{}' not found. \
+             The scripts directory must contain main.lua.",
+            entry.display()
+        );
+    }
+    info!("Scripts dir OK: {}", cfg.scripts_dir.display());
+
+    // doors_dir: create if absent (no doors configured yet is fine).
+    ensure_dir(&cfg.doors_dir, "Doors")?;
+
+    // ansi_dir: create if absent (art is optional).
+    ensure_dir(&cfg.ansi_dir, "ANSI art")?;
+
+    Ok(())
+}
+
+fn ensure_dir(path: &Path, label: &str) -> Result<()> {
+    if path.exists() {
+        if !path.is_dir() {
+            anyhow::bail!("{} path '{}' exists but is not a directory.", label, path.display());
+        }
+        info!("{} dir OK: {}", label, path.display());
+    } else {
+        std::fs::create_dir_all(path)?;
+        warn!("{} directory '{}' did not exist — created.", label, path.display());
+    }
     Ok(())
 }

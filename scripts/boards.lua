@@ -41,9 +41,19 @@ local function list_boards()
         return nil
     end
     bbs.writeln("")
-    bbs.writeln("Message Boards:")
+    bbs.writeln(bbs.ansi("bold") .. "Message Boards:" .. bbs.ansi("reset"))
+    bbs.writeln(string.format("  %-3s  %-20s  %5s  %5s  %s",
+        "#", "Name", "Total", "New", "Description"))
+    bbs.writeln("  " .. string.rep("-", 58))
     for i, b in ipairs(boards) do
-        bbs.writeln(string.format("  [%d] %-20s %s", i, b.name, b.description))
+        local new_col
+        if b.new > 0 then
+            new_col = bbs.ansi("bold") .. string.format("%5d", b.new) .. bbs.ansi("reset")
+        else
+            new_col = string.format("%5d", b.new)
+        end
+        bbs.writeln(string.format("  [%d] %-20s  %5d  %s  %s",
+            i, b.name, b.total, new_col, b.description))
     end
     bbs.writeln("")
     return boards
@@ -177,6 +187,7 @@ function M.run()
     key = key:upper()
 
     if key == "R" then
+        bbs.boards.mark_visited(board.id)
         read_board(board)
     elseif key == "P" then
         post_message(board)
