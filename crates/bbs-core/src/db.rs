@@ -431,6 +431,39 @@ impl Database {
         Ok(())
     }
 
+    // ── Profile ───────────────────────────────────────────────────────────────
+
+    /// Stats for a user: (created_at, last_login, post_count, mail_sent, mail_received).
+    pub async fn user_stats(&self, user_id: i64) -> Result<(i64, Option<i64>, i64, i64, i64)> {
+        let row = sqlx::query(
+            "SELECT u.created_at, u.last_login,
+                    (SELECT COUNT(*) FROM messages  WHERE author_id    = u.id) AS post_count,
+                    (SELECT COUNT(*) FROM mail      WHERE sender_id    = u.id) AS mail_sent,
+                    (SELECT COUNT(*) FROM mail      WHERE recipient_id = u.id) AS mail_received
+             FROM users u WHERE u.id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok((
+            row.get::<i64, _>("created_at"),
+            row.get::<Option<i64>, _>("last_login"),
+            row.get::<i64, _>("post_count"),
+            row.get::<i64, _>("mail_sent"),
+            row.get::<i64, _>("mail_received"),
+        ))
+    }
+
+    /// Update a user's password hash.
+    pub async fn change_password(&self, user_id: i64, new_hash: &str) -> Result<()> {
+        sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+            .bind(new_hash)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     // ── Callers ───────────────────────────────────────────────────────────────
 
     /// Most recent callers, newest first.

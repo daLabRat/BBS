@@ -703,6 +703,75 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         bbs.set("bulletins", btbl)?;
     }
 
+    // --- bbs.profile ---
+    {
+        let db = Arc::clone(&config.db);
+        let profile_tbl = lua.create_table()?;
+
+        // bbs.profile.stats() -> {joined, last_login, post_count, mail_sent, mail_received}
+        {
+            let db = Arc::clone(&db);
+            profile_tbl.set(
+                "stats",
+                lua.create_async_function(move |lua, ()| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                        let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                        let my_id: i64 = user_tbl.get("id")?;
+                        let (joined, last_login, posts, sent, received) =
+                            db.user_stats(my_id).await.map_err(LuaError::external)?;
+                        let t = lua.create_table()?;
+                        t.set("joined", joined)?;
+                        t.set("last_login", last_login)?;
+                        t.set("post_count", posts)?;
+                        t.set("mail_sent", sent)?;
+                        t.set("mail_received", received)?;
+                        Ok(t)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.profile.change_password(old, new) -> true | nil, errmsg
+        {
+            let db = Arc::clone(&db);
+            profile_tbl.set(
+                "change_password",
+                lua.create_async_function(move |lua, (old_pass, new_pass): (String, String)| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                        let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                        let my_id: i64 = user_tbl.get("id")?;
+                        let user = db
+                            .find_user_by_id(my_id)
+                            .await
+                            .map_err(LuaError::external)?
+                            .ok_or_else(|| LuaError::external(anyhow::anyhow!("user not found")))?;
+                        match bbs_core::verify_password(&old_pass, &user.password_hash) {
+                            Ok(true) => {}
+                            _ => {
+                                return Ok((
+                                    LuaValue::Nil,
+                                    LuaValue::String(lua.create_string("Incorrect password")?),
+                                ))
+                            }
+                        }
+                        let new_hash = bbs_core::hash_password(&new_pass)
+                            .map_err(LuaError::external)?;
+                        db.change_password(my_id, &new_hash)
+                            .await
+                            .map_err(LuaError::external)?;
+                        Ok((LuaValue::Boolean(true), LuaValue::Nil))
+                    }
+                })?,
+            )?;
+        }
+
+        bbs.set("profile", profile_tbl)?;
+    }
+
     // --- bbs.callers ---
     {
         let db = Arc::clone(&config.db);

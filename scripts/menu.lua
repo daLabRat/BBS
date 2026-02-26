@@ -3,6 +3,7 @@
 local boards    = require("boards")
 local bulletins = require("bulletins")
 local mail      = require("mail")
+local profile   = require("profile")
 
 local M = {}
 
@@ -13,6 +14,7 @@ local MAIN_MENU = {
         { key = "M", label = "Message boards",  action = "boards"  },
         { key = "D", label = "Door games",       action = "doors"   },
         { key = "E", label = "E-mail / Mail",    action = "mail"    },
+        { key = "U", label = "User profile",     action = "profile" },
         { key = "S", label = "System info",      action = "sysinfo" },
         { key = "Q", label = "Quit / Logoff",    action = "quit"    },
     },
@@ -73,6 +75,8 @@ function M.run()
                 doors_menu()
             elseif key == "E" then
                 mail.run()
+            elseif key == "U" then
+                profile.run()
             elseif key == "S" then
                 sysinfo()
             elseif key == "Q" then
