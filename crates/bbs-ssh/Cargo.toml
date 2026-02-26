@@ -4,10 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-anyhow    = { workspace = true }
-thiserror = { workspace = true }
-tokio     = { workspace = true }
-tracing   = { workspace = true }
+anyhow      = { workspace = true }
+thiserror   = { workspace = true }
+tokio       = { workspace = true }
+tracing     = { workspace = true }
+bytes       = { workspace = true }
+async-trait = "0.1"
+russh       = "0.44"
+russh-keys  = "0.44"
 bbs-runtime = { path = "../bbs-runtime" }
 bbs-tui     = { path = "../bbs-tui" }
-russh       = "0.44"

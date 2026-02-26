@@ -25,7 +25,7 @@ impl Session {
         let pkg: mlua::Table = lua.globals().get("package")?;
         pkg.set("path", format!("{}/?.lua", scripts_dir.display()))?;
 
-        api::register(&lua, self.terminal)?;
+        api::register(&lua, self.terminal, &self.config)?;
 
         let src = tokio::fs::read_to_string(scripts_dir.join("main.lua")).await?;
         lua.load(&src)

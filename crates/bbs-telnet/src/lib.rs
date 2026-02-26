@@ -1,10 +1,12 @@
 //! Raw TCP listener with telnet IAC state machine.
-//! Accepts connections on the telnet port and runs a bbs-runtime Session per connection.
+//! Accepts connections on the telnet port and hands each session off to a
+//! dedicated OS thread (via `bbs_runtime::spawn_session`) so that the mlua
+//! `!Send` Lua VM can run freely with its own single-thread Tokio runtime.
 
 use std::sync::Arc;
 
 use anyhow::Result;
-use bbs_runtime::{RuntimeConfig, Session, Terminal};
+use bbs_runtime::{RuntimeConfig, Terminal};
 use bytes::Bytes;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -26,30 +28,23 @@ const OPT_NAWS: u8 = 31;
 
 /// Start the telnet listener and accept connections forever.
 ///
-/// Connections are handled inside a [`tokio::task::LocalSet`] so that each
-/// session's mlua Lua VM (which is `!Send`) can use `call_async` freely.
+/// Each accepted connection spawns two tokio tasks (read/write pumps) and one
+/// OS thread (Lua VM session).  The function itself is a regular `Send` future
+/// and can participate in `tokio::try_join!`.
 pub async fn serve(addr: &str, config: Arc<RuntimeConfig>) -> Result<()> {
     let listener = TcpListener::bind(addr).await?;
     info!("Telnet listening on {addr}");
 
-    let local = tokio::task::LocalSet::new();
-    local
-        .run_until(async move {
-            loop {
-                let (socket, peer) = listener.accept().await?;
-                info!("Telnet connection from {peer}");
-                let cfg = Arc::clone(&config);
-                tokio::task::spawn_local(async move {
-                    if let Err(e) = handle_connection(socket, cfg).await {
-                        error!("Telnet session error from {peer}: {e}");
-                    }
-                    info!("Telnet connection closed: {peer}");
-                });
+    loop {
+        let (socket, peer) = listener.accept().await?;
+        info!("Telnet connection from {peer}");
+        let cfg = Arc::clone(&config);
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(socket, cfg).await {
+                error!("Telnet session error from {peer}: {e}");
             }
-            #[allow(unreachable_code)]
-            Ok::<(), anyhow::Error>(())
-        })
-        .await
+        });
+    }
 }
 
 async fn handle_connection(
@@ -69,8 +64,6 @@ async fn handle_connection(
     ];
     write_half.write_all(negot).await?;
 
-    // Channels: TCP read → byte_tx → (IAC stripped, CR/LF normalised) → Session
-    //           Session → out_tx → out_rx → TCP write
     let (byte_tx, byte_rx) = mpsc::channel::<u8>(1024);
     let (out_tx, out_rx) = mpsc::channel::<Bytes>(64);
 
@@ -79,7 +72,10 @@ async fn handle_connection(
     tokio::spawn(write_pump(write_half, out_rx));
     tokio::spawn(read_pump(read_half, byte_tx));
 
-    Session::new(terminal, config).run().await
+    // Session runs on its own OS thread with a current-thread Tokio runtime.
+    bbs_runtime::spawn_session(terminal, config);
+
+    Ok(())
 }
 
 /// Write pump: drain the output channel and send to TCP.
@@ -118,7 +114,6 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
             match state {
                 State::Data => {
                     if byte == IAC {
-                        // Flush any pending bare CR before entering IAC
                         if prev_cr {
                             prev_cr = false;
                             if tx.send(b'\r').await.is_err() {
@@ -126,33 +121,26 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
                             }
                         }
                         state = State::Iac;
-                    } else {
-                        // CR/LF normalisation
-                        if prev_cr {
-                            prev_cr = false;
-                            match byte {
-                                b'\n' => {
-                                    // CR LF → \n
-                                    if tx.send(b'\n').await.is_err() {
-                                        break 'outer;
-                                    }
-                                }
-                                b'\0' => {
-                                    // CR NUL → drop (bare Enter on some clients)
-                                }
-                                _ => {
-                                    // Bare CR followed by something else — emit CR then fall through
-                                    if tx.send(b'\r').await.is_err() {
-                                        break 'outer;
-                                    }
-                                    if emit_data_byte(byte, &mut prev_cr, &tx).await {
-                                        break 'outer;
-                                    }
+                    } else if prev_cr {
+                        prev_cr = false;
+                        match byte {
+                            b'\n' => {
+                                if tx.send(b'\n').await.is_err() {
+                                    break 'outer;
                                 }
                             }
-                        } else if emit_data_byte(byte, &mut prev_cr, &tx).await {
-                            break 'outer;
+                            b'\0' => {}
+                            _ => {
+                                if tx.send(b'\r').await.is_err() {
+                                    break 'outer;
+                                }
+                                if emit_data_byte(byte, &mut prev_cr, &tx).await {
+                                    break 'outer;
+                                }
+                            }
                         }
+                    } else if emit_data_byte(byte, &mut prev_cr, &tx).await {
+                        break 'outer;
                     }
                 }
 
@@ -164,7 +152,6 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
                             State::Sb
                         }
                         IAC => {
-                            // Escaped IAC — emit a literal 0xFF
                             if tx.send(IAC).await.is_err() {
                                 break 'outer;
                             }
@@ -175,7 +162,6 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
                 }
 
                 State::Cmd(_verb) => {
-                    // Option byte — silently accept all options for now
                     state = State::Data;
                 }
 
@@ -193,7 +179,6 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
                         subneg.clear();
                         state = State::Data;
                     } else {
-                        // IAC inside subneg that isn't SE — keep collecting
                         subneg.push(IAC);
                         subneg.push(byte);
                         state = State::Sb;
@@ -204,8 +189,6 @@ async fn read_pump(mut reader: OwnedReadHalf, tx: mpsc::Sender<u8>) {
     }
 }
 
-/// Emit a single data byte, handling the CR flag.
-/// Returns `true` if the channel is closed (caller should break).
 async fn emit_data_byte(byte: u8, prev_cr: &mut bool, tx: &mpsc::Sender<u8>) -> bool {
     match byte {
         b'\r' => {
@@ -217,7 +200,6 @@ async fn emit_data_byte(byte: u8, prev_cr: &mut bool, tx: &mpsc::Sender<u8>) -> 
     }
 }
 
-/// Handle a completed subnegotiation buffer.
 fn process_subneg(buf: &[u8]) {
     if buf.first() == Some(&OPT_NAWS) && buf.len() >= 5 {
         let w = u16::from_be_bytes([buf[1], buf[2]]);
