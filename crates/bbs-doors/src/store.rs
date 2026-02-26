@@ -16,27 +16,27 @@ impl DoorStore {
     }
 
     pub async fn get(&self, key: &str) -> Result<Option<String>> {
-        let row = sqlx::query_scalar!(
+        let row: Option<(String,)> = sqlx::query_as(
             "SELECT value FROM door_data WHERE door_name = ? AND user_id = ? AND key = ?",
-            self.door_name,
-            self.user_id,
-            key
         )
+        .bind(&self.door_name)
+        .bind(self.user_id)
+        .bind(key)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row)
+        Ok(row.map(|(v,)| v))
     }
 
     pub async fn set(&self, key: &str, value: &str) -> Result<()> {
-        sqlx::query!(
+        sqlx::query(
             "INSERT INTO door_data (door_name, user_id, key, value)
              VALUES (?, ?, ?, ?)
              ON CONFLICT (door_name, user_id, key) DO UPDATE SET value = excluded.value",
-            self.door_name,
-            self.user_id,
-            key,
-            value
         )
+        .bind(&self.door_name)
+        .bind(self.user_id)
+        .bind(key)
+        .bind(value)
         .execute(&self.pool)
         .await?;
         Ok(())
