@@ -50,11 +50,12 @@ local function show_menu(def)
         mail_tag = "  "..BRED.."["..unread.." new mail]"..RST
     end
 
+    local rule = BCYN..string.rep("─", 58)..RST
     bbs.writeln("")
-    bbs.writeln(BCYN.."  ┌──────────────────────────────────────────────────────────┐"..RST)
-    bbs.writeln(BCYN.."  │"..RST.."  "..BWHT.."[ "..def.title.." ]"..RST..
+    bbs.writeln("  "..rule)
+    bbs.writeln("  "..BCYN.."│"..RST.."  "..BWHT.."[ "..def.title.." ]"..RST..
         "  "..user_line..mail_tag)
-    bbs.writeln(BCYN.."  └──────────────────────────────────────────────────────────┘"..RST)
+    bbs.writeln("  "..rule)
     bbs.writeln("")
 
     -- Menu items in two columns
