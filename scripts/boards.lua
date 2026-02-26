@@ -1,6 +1,38 @@
--- boards.lua: Message board reader/poster.
+-- boards.lua: Message board reader/poster with threaded display.
 
 local M = {}
+
+-- Build a depth-first ordered list from a flat message array.
+-- Each entry gets a _depth field added in place.
+local function build_thread_order(messages)
+    local by_id = {}
+    for _, m in ipairs(messages) do by_id[m.id] = m end
+
+    local children = {}
+    local roots = {}
+    for _, m in ipairs(messages) do
+        local pid = m.parent_id
+        if pid and pid ~= 0 and by_id[pid] then
+            if not children[pid] then children[pid] = {} end
+            table.insert(children[pid], m)
+        else
+            table.insert(roots, m)
+        end
+    end
+
+    local ordered = {}
+    local function traverse(msg, depth)
+        msg._depth = depth
+        table.insert(ordered, msg)
+        if children[msg.id] then
+            for _, child in ipairs(children[msg.id]) do
+                traverse(child, depth + 1)
+            end
+        end
+    end
+    for _, root in ipairs(roots) do traverse(root, 0) end
+    return ordered
+end
 
 local function list_boards()
     local boards = bbs.boards.list()
@@ -23,16 +55,56 @@ local function read_board(board)
         bbs.writeln("No messages in " .. board.name .. ".")
         return
     end
+
+    local ordered = build_thread_order(messages)
+
+    -- Show threaded index
     bbs.writeln("")
     bbs.writeln(bbs.ansi("bold") .. board.name .. bbs.ansi("reset"))
     bbs.writeln(string.rep("-", 60))
-    for _, msg in ipairs(messages) do
-        bbs.writeln(string.format("[%d] %s", msg.id, msg.subject))
-        bbs.writeln("    From: " .. (msg.author or "Unknown"))
-        bbs.writeln("")
-        bbs.pager(msg.body)
-        bbs.writeln(string.rep("-", 60))
+    for i, msg in ipairs(ordered) do
+        local indent = string.rep("  ", msg._depth)
+        local prefix = msg._depth > 0 and "\xC2\xBB " or ""   -- » for replies
+        bbs.writeln(string.format("  [%2d] %s%s%s  (%s)",
+            i, indent, prefix, msg.subject, msg.author or "?"))
     end
+    bbs.writeln("")
+
+    local choice = bbs.read_line("Read # (or Enter to cancel): ")
+    local n = tonumber(choice)
+    if not n or not ordered[n] then return end
+
+    local msg = ordered[n]
+    bbs.writeln(string.rep("-", 60))
+    bbs.writeln("Subject: " .. msg.subject)
+    bbs.writeln("From   : " .. (msg.author or "Unknown"))
+    bbs.writeln(os.date("Date   : %Y-%m-%d %H:%M", msg.created_at))
+    bbs.writeln(string.rep("-", 60))
+    bbs.pager(msg.body)
+    bbs.writeln("")
+    bbs.writeln("  [R] Reply   [Q] Back")
+    local key = bbs.read_key()
+    if key and key:upper() == "R" then
+        reply_to(board, msg)
+    end
+end
+
+function reply_to(board, parent)
+    local default_subject = parent.subject:match("^Re:") and parent.subject
+                            or ("Re: " .. parent.subject)
+    bbs.writeln("")
+    local subject = bbs.read_line("Subject [" .. default_subject .. "]: ")
+    if subject == nil then bbs.writeln("Cancelled.") return end
+    if #subject == 0 then subject = default_subject end
+    bbs.writeln("Body (end with a line containing only '.'):")
+    local lines = {}
+    while true do
+        local line = bbs.read_line("")
+        if line == "." or line == nil then break end
+        table.insert(lines, line)
+    end
+    bbs.boards.post_reply(board.id, parent.id, subject, table.concat(lines, "\n"))
+    bbs.writeln("Reply posted!")
 end
 
 local function post_message(board)
@@ -42,16 +114,14 @@ local function post_message(board)
         bbs.writeln("Cancelled.")
         return
     end
-    bbs.writeln("Body (end with a line containing only '.'): ")
+    bbs.writeln("Body (end with a line containing only '.'):")
     local lines = {}
     while true do
         local line = bbs.read_line("")
-        if line == "." then break end
-        if line == nil then break end
+        if line == "." or line == nil then break end
         table.insert(lines, line)
     end
-    local body = table.concat(lines, "\n")
-    bbs.boards.post(board.id, subject, body)
+    bbs.boards.post(board.id, subject, table.concat(lines, "\n"))
     bbs.writeln("Message posted!")
 end
 
@@ -65,7 +135,7 @@ function M.run()
 
     local board = boards[n]
     bbs.writeln("")
-    bbs.writeln("[R]ead messages  [P]ost  [Q]uit")
+    bbs.writeln("  [R] Read   [P] Post   [Q] Back")
     local key = bbs.read_key()
     if key == nil then return end
     key = key:upper()

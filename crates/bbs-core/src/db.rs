@@ -31,7 +31,7 @@ impl Database {
 
     pub async fn find_user_by_username(&self, username: &str) -> Result<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, is_sysop, created_at, last_login
+            "SELECT id, username, password_hash, is_sysop, banned, created_at, last_login
              FROM users WHERE username = ?",
         )
         .bind(username)
@@ -42,7 +42,7 @@ impl Database {
 
     pub async fn find_user_by_id(&self, id: i64) -> Result<Option<User>> {
         let user = sqlx::query_as::<_, User>(
-            "SELECT id, username, password_hash, is_sysop, created_at, last_login
+            "SELECT id, username, password_hash, is_sysop, banned, created_at, last_login
              FROM users WHERE id = ?",
         )
         .bind(id)
@@ -251,6 +251,28 @@ impl Database {
         Ok(id)
     }
 
+    pub async fn post_reply(
+        &self,
+        board_id: i64,
+        parent_id: i64,
+        author_id: i64,
+        subject: &str,
+        body: &str,
+    ) -> Result<i64> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO messages (board_id, parent_id, author_id, subject, body)
+             VALUES (?, ?, ?, ?, ?) RETURNING id",
+        )
+        .bind(board_id)
+        .bind(parent_id)
+        .bind(author_id)
+        .bind(subject)
+        .bind(body)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
     // ── Mail ─────────────────────────────────────────────────────────────────
 
     /// Inbox for recipient_id, newest first.
@@ -426,6 +448,42 @@ impl Database {
     pub async fn delete_bulletin(&self, id: i64) -> Result<()> {
         sqlx::query("UPDATE bulletins SET is_active = 0 WHERE id = ?")
             .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    // ── Sysop ─────────────────────────────────────────────────────────────────
+
+    /// All users, ordered by id.
+    /// Returns (id, username, is_sysop, banned, created_at, last_login).
+    pub async fn list_users(&self) -> Result<Vec<(i64, String, bool, bool, i64, Option<i64>)>> {
+        let rows = sqlx::query(
+            "SELECT id, username, is_sysop, banned, created_at, last_login
+             FROM users ORDER BY id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.get::<i64, _>("id"),
+                    r.get::<String, _>("username"),
+                    r.get::<bool, _>("is_sysop"),
+                    r.get::<bool, _>("banned"),
+                    r.get::<i64, _>("created_at"),
+                    r.get::<Option<i64>, _>("last_login"),
+                )
+            })
+            .collect())
+    }
+
+    /// Set the banned flag for a user.
+    pub async fn set_banned(&self, user_id: i64, banned: bool) -> Result<()> {
+        sqlx::query("UPDATE users SET banned = ? WHERE id = ?")
+            .bind(banned)
+            .bind(user_id)
             .execute(&self.pool)
             .await?;
         Ok(())

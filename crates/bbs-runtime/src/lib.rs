@@ -1,11 +1,13 @@
 pub mod api;
 pub mod registry;
 pub mod session;
+pub mod throttle;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use registry::SessionRegistry;
+pub use throttle::LoginThrottle;
 
 /// Shared configuration passed to every user session.
 pub struct RuntimeConfig {
@@ -13,6 +15,7 @@ pub struct RuntimeConfig {
     pub doors_dir: PathBuf,
     pub db: Arc<bbs_core::Database>,
     pub registry: SessionRegistry,
+    pub throttle: LoginThrottle,
 }
 
 pub use bbs_tui::Terminal;

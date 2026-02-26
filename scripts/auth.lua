@@ -15,6 +15,12 @@ function M.login()
         return M.register()
     end
 
+    local wait = bbs.auth.throttle_check(username)
+    if wait then
+        bbs.writeln("Too many failed attempts. Try again in " .. wait .. "s.")
+        return false
+    end
+
     local password = bbs.read_pass("Password: ")
     if password == nil then
         return false
@@ -22,12 +28,18 @@ function M.login()
 
     local user = bbs.auth.login(username, password)
     if user then
+        if user.banned then
+            bbs.writeln("Your account has been suspended.")
+            return false
+        end
+        bbs.auth.throttle_clear(username)
         bbs.user.name     = user.name
         bbs.user.id       = user.id
         bbs.user.is_sysop = user.is_sysop
         return true
     end
 
+    bbs.auth.throttle_fail(username)
     bbs.writeln("Invalid credentials.")
     return false
 end

@@ -4,6 +4,7 @@ local boards    = require("boards")
 local bulletins = require("bulletins")
 local mail      = require("mail")
 local profile   = require("profile")
+local sysop     = require("sysop")
 local who       = require("who")
 
 local M = {}
@@ -18,6 +19,7 @@ local MAIN_MENU = {
         { key = "U", label = "User profile",     action = "profile" },
         { key = "W", label = "Who's online",     action = "who"     },
         { key = "S", label = "System info",      action = "sysinfo" },
+        { key = "A", label = "Admin panel",      action = "admin",  sysop_only = true },
         { key = "Q", label = "Quit / Logoff",    action = "quit"    },
     },
 }
@@ -27,7 +29,9 @@ local function show_menu(def)
     bbs.writeln(bbs.ansi("bold") .. "[ " .. def.title .. " ]" .. bbs.ansi("reset"))
     bbs.writeln("")
     for _, item in ipairs(def.items) do
-        bbs.writeln(string.format("  [%s] %s", item.key, item.label))
+        if not item.sysop_only or bbs.user.is_sysop then
+            bbs.writeln(string.format("  [%s] %s", item.key, item.label))
+        end
     end
     bbs.writeln("")
 end
@@ -83,6 +87,8 @@ function M.run()
                 who.run()
             elseif key == "S" then
                 sysinfo()
+            elseif key == "A" then
+                sysop.run()
             elseif key == "Q" then
                 running = false
             end

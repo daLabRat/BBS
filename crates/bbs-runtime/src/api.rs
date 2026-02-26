@@ -276,6 +276,10 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
     bbs.set("user", user)?;
 
     // --- bbs.auth ---
+    // Three throttle helpers live on bbs.auth so auth.lua has one import:
+    //   bbs.auth.throttle_check(username) -> nil | seconds_remaining
+    //   bbs.auth.throttle_fail(username)
+    //   bbs.auth.throttle_clear(username)
     {
         let db = Arc::clone(&config.db);
         let auth_tbl = lua.create_table()?;
@@ -301,6 +305,7 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                                         t.set("name", u.username)?;
                                         t.set("id", u.id)?;
                                         t.set("is_sysop", u.is_sysop)?;
+                                        t.set("banned", u.banned)?;
                                         Ok(LuaValue::Table(t))
                                     }
                                     _ => Ok(LuaValue::Nil),
@@ -335,6 +340,41 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                             Err(_) => Ok(LuaValue::Nil), // username taken
                         }
                     }
+                })?,
+            )?;
+        }
+
+        // bbs.auth.throttle_check(username) -> nil | seconds_remaining
+        {
+            let throttle = config.throttle.clone();
+            auth_tbl.set(
+                "throttle_check",
+                lua.create_function(move |_lua, username: String| {
+                    Ok(throttle.locked_for(&username.to_lowercase()))
+                })?,
+            )?;
+        }
+
+        // bbs.auth.throttle_fail(username)
+        {
+            let throttle = config.throttle.clone();
+            auth_tbl.set(
+                "throttle_fail",
+                lua.create_function(move |_lua, username: String| {
+                    throttle.record_fail(&username.to_lowercase());
+                    Ok(())
+                })?,
+            )?;
+        }
+
+        // bbs.auth.throttle_clear(username)
+        {
+            let throttle = config.throttle.clone();
+            auth_tbl.set(
+                "throttle_clear",
+                lua.create_function(move |_lua, username: String| {
+                    throttle.record_success(&username.to_lowercase());
+                    Ok(())
                 })?,
             )?;
         }
@@ -420,6 +460,28 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
             )?;
         }
 
+        // bbs.boards.post_reply(board_id, parent_id, subject, body) -> nil
+        {
+            let db = Arc::clone(&db);
+            boards_tbl.set(
+                "post_reply",
+                lua.create_async_function(
+                    move |lua, (board_id, parent_id, subject, body): (i64, i64, String, String)| {
+                        let db = Arc::clone(&db);
+                        async move {
+                            let bbs_tbl: LuaTable = lua.globals().get("bbs")?;
+                            let user_tbl: LuaTable = bbs_tbl.get("user")?;
+                            let author_id: i64 = user_tbl.get("id")?;
+                            db.post_reply(board_id, parent_id, author_id, &subject, &body)
+                                .await
+                                .map_err(LuaError::external)?;
+                            Ok(())
+                        }
+                    },
+                )?,
+            )?;
+        }
+
         bbs.set("boards", boards_tbl)?;
     }
 
@@ -482,6 +544,82 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         }
 
         bbs.set("doors", doors_tbl)?;
+    }
+
+    // --- bbs.sysop ---
+    {
+        let db = Arc::clone(&config.db);
+        let sysop_tbl = lua.create_table()?;
+
+        // bbs.sysop.users() -> [{id, name, is_sysop, banned, joined, last_login}]
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "users",
+                lua.create_async_function(move |lua, ()| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let rows = db.list_users().await.map_err(LuaError::external)?;
+                        let result = lua.create_table()?;
+                        for (i, (id, name, is_sysop, banned, joined, last_login)) in
+                            rows.into_iter().enumerate()
+                        {
+                            let t = lua.create_table()?;
+                            t.set("id", id)?;
+                            t.set("name", name)?;
+                            t.set("is_sysop", is_sysop)?;
+                            t.set("banned", banned)?;
+                            t.set("joined", joined)?;
+                            t.set("last_login", last_login)?;
+                            result.set(i + 1, t)?;
+                        }
+                        Ok(result)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.ban(username) -> true | nil, errmsg
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "ban",
+                lua.create_async_function(move |lua, username: String| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        match db.find_user_by_username(&username).await.map_err(LuaError::external)? {
+                            None => Ok((LuaValue::Nil, LuaValue::String(lua.create_string("No such user")?))),
+                            Some(u) => {
+                                db.set_banned(u.id, true).await.map_err(LuaError::external)?;
+                                Ok((LuaValue::Boolean(true), LuaValue::Nil))
+                            }
+                        }
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.unban(username) -> true | nil, errmsg
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "unban",
+                lua.create_async_function(move |lua, username: String| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        match db.find_user_by_username(&username).await.map_err(LuaError::external)? {
+                            None => Ok((LuaValue::Nil, LuaValue::String(lua.create_string("No such user")?))),
+                            Some(u) => {
+                                db.set_banned(u.id, false).await.map_err(LuaError::external)?;
+                                Ok((LuaValue::Boolean(true), LuaValue::Nil))
+                            }
+                        }
+                    }
+                })?,
+            )?;
+        }
+
+        bbs.set("sysop", sysop_tbl)?;
     }
 
     // --- bbs.mail ---

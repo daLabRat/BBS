@@ -6,6 +6,7 @@ pub struct User {
     pub username: String,
     pub password_hash: String,
     pub is_sysop: bool,
+    pub banned: bool,
     pub created_at: i64,
     pub last_login: Option<i64>,
 }
