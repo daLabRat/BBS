@@ -26,6 +26,10 @@ local MAIN_MENU = {
 
 local function show_menu(def)
     bbs.writeln("")
+    local unread = bbs.mail.unread()
+    if unread > 0 then
+        bbs.writeln(bbs.ansi("bold") .. "  *** " .. unread .. " unread mail ***" .. bbs.ansi("reset"))
+    end
     bbs.writeln(bbs.ansi("bold") .. "[ " .. def.title .. " ]" .. bbs.ansi("reset"))
     bbs.writeln("")
     for _, item in ipairs(def.items) do

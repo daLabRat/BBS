@@ -170,6 +170,27 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
         lua.create_function(|_lua, name: String| Ok(bbs_tui::ansi::named(&name).to_string()))?,
     )?;
 
+    // --- bbs.art(name) -> string | nil ---
+    // Loads an art file from ansi_dir, trying .ans / .asc / .txt extensions.
+    {
+        let ansi_dir = config.ansi_dir.clone();
+        bbs.set(
+            "art",
+            lua.create_async_function(move |lua, name: String| {
+                let ansi_dir = ansi_dir.clone();
+                async move {
+                    for ext in &["ans", "asc", "txt"] {
+                        let path = ansi_dir.join(format!("{name}.{ext}"));
+                        if let Ok(content) = tokio::fs::read_to_string(&path).await {
+                            return Ok(LuaValue::String(lua.create_string(content.as_bytes())?));
+                        }
+                    }
+                    Ok(LuaValue::Nil)
+                }
+            })?,
+        )?;
+    }
+
     // --- bbs.time() -> integer (unix seconds) ---
     bbs.set(
         "time",
@@ -614,6 +635,36 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                                 Ok((LuaValue::Boolean(true), LuaValue::Nil))
                             }
                         }
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.create_board(name, description) -> id
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "create_board",
+                lua.create_async_function(move |_lua, (name, desc): (String, String)| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let id = db.create_board(&name, &desc).await.map_err(LuaError::external)?;
+                        Ok(id)
+                    }
+                })?,
+            )?;
+        }
+
+        // bbs.sysop.delete_board(id) -> nil
+        {
+            let db = Arc::clone(&db);
+            sysop_tbl.set(
+                "delete_board",
+                lua.create_async_function(move |_lua, id: i64| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        db.delete_board(id).await.map_err(LuaError::external)?;
+                        Ok(())
                     }
                 })?,
             )?;

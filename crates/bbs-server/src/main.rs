@@ -37,6 +37,9 @@ async fn main() -> Result<()> {
     let doors_dir = cfg
         .get_string("paths.doors")
         .unwrap_or_else(|_| "doors".into());
+    let ansi_dir = cfg
+        .get_string("paths.ansi")
+        .unwrap_or_else(|_| "ansi".into());
 
     let registry = SessionRegistry::default();
     let throttle = LoginThrottle::default();
@@ -44,15 +47,17 @@ async fn main() -> Result<()> {
     let runtime_config = Arc::new(RuntimeConfig {
         scripts_dir: scripts_dir.into(),
         doors_dir: doors_dir.into(),
+        ansi_dir: ansi_dir.into(),
         db: Arc::clone(&db),
         registry,
         throttle,
     });
 
     info!(
-        "Scripts dir: {}  Doors dir: {}",
+        "Scripts dir: {}  Doors dir: {}  ANSI dir: {}",
         runtime_config.scripts_dir.display(),
-        runtime_config.doors_dir.display()
+        runtime_config.doors_dir.display(),
+        runtime_config.ansi_dir.display()
     );
 
     // ── Bind addresses ───────────────────────────────────────────────────────

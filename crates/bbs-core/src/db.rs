@@ -453,6 +453,28 @@ impl Database {
         Ok(())
     }
 
+    // ── Board management ──────────────────────────────────────────────────────
+
+    pub async fn create_board(&self, name: &str, description: &str) -> Result<i64> {
+        let id: i64 = sqlx::query_scalar(
+            "INSERT INTO boards (name, description) VALUES (?, ?) RETURNING id",
+        )
+        .bind(name)
+        .bind(description)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(id)
+    }
+
+    /// Hard-delete a board and all its messages (ON DELETE CASCADE).
+    pub async fn delete_board(&self, id: i64) -> Result<()> {
+        sqlx::query("DELETE FROM boards WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     // ── Sysop ─────────────────────────────────────────────────────────────────
 
     /// All users, ordered by id.

@@ -7,8 +7,13 @@ local menu      = require("menu")
 
 local function show_welcome()
     bbs.clear()
-    bbs.writeln(bbs.ansi("bold") .. "Welcome to the BBS!" .. bbs.ansi("reset"))
-    bbs.writeln("")
+    local art = bbs.art("welcome")
+    if art then
+        bbs.write(bbs.ansi("bold") .. bbs.ansi("cyan") .. art .. bbs.ansi("reset"))
+    else
+        bbs.writeln(bbs.ansi("bold") .. "Welcome to the BBS!" .. bbs.ansi("reset"))
+        bbs.writeln("")
+    end
     local callers = bbs.callers.recent(10)
     if #callers > 0 then
         bbs.writeln("Last callers:")

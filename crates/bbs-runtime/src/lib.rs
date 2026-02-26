@@ -13,6 +13,7 @@ pub use throttle::LoginThrottle;
 pub struct RuntimeConfig {
     pub scripts_dir: PathBuf,
     pub doors_dir: PathBuf,
+    pub ansi_dir: PathBuf,
     pub db: Arc<bbs_core::Database>,
     pub registry: SessionRegistry,
     pub throttle: LoginThrottle,
