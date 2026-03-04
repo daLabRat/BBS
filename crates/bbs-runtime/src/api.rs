@@ -616,7 +616,7 @@ pub fn register(lua: &Lua, terminal: Terminal, config: &RuntimeConfig) -> Result
                         };
                         let registry = bbs_doors::DoorRegistry::new(&doors_dir);
                         let lua_path = registry.main_lua(&name);
-                        let runner = bbs_doors::DoorRunner::new(db, terminal, dos_config);
+                        let runner = bbs_doors::DoorRunner::new(db, terminal, dos_config, &doors_dir);
                         runner
                             .run(&name, lua_path.to_str().unwrap_or(""), &user)
                             .await

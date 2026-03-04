@@ -27,6 +27,7 @@ use bbs_tui::Terminal;
 use bytes::Bytes;
 use mlua::prelude::*;
 
+use crate::db::{DbValue, DoorDb};
 use crate::dos::DosConfig;
 use crate::session::DoorUser;
 use crate::store::DoorStore;
@@ -36,6 +37,7 @@ pub fn register(
     terminal: Terminal,
     user: &DoorUser,
     store: Arc<DoorStore>,
+    db: Arc<DoorDb>,
     exit_flag: Arc<AtomicBool>,
     dos_config: DosConfig,
 ) -> Result<()> {
@@ -278,7 +280,83 @@ pub fn register(
         )?;
     }
 
+    // door.db.query(sql, params?) -> array of row tables
+    // door.db.execute(sql, params?) -> rows_affected
+    {
+        let db_tbl = lua.create_table()?;
+
+        {
+            let db = Arc::clone(&db);
+            db_tbl.set(
+                "query",
+                lua.create_async_function(move |lua, (sql, params): (String, Option<LuaTable>)| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let params = lua_params_to_vec(params)?;
+                        let rows = db.query(&sql, params).await.map_err(LuaError::external)?;
+                        let result = lua.create_table()?;
+                        for (i, row) in rows.into_iter().enumerate() {
+                            let row_tbl = lua.create_table()?;
+                            for (k, v) in row {
+                                let lv = dbvalue_to_lua(lua, v)?;
+                                row_tbl.set(k, lv)?;
+                            }
+                            result.set(i + 1, row_tbl)?;
+                        }
+                        Ok(result)
+                    }
+                })?,
+            )?;
+        }
+
+        {
+            let db = Arc::clone(&db);
+            db_tbl.set(
+                "execute",
+                lua.create_async_function(move |_lua, (sql, params): (String, Option<LuaTable>)| {
+                    let db = Arc::clone(&db);
+                    async move {
+                        let params = lua_params_to_vec(params)?;
+                        let affected = db.execute(&sql, params).await.map_err(LuaError::external)?;
+                        Ok(affected as i64)
+                    }
+                })?,
+            )?;
+        }
+
+        door.set("db", db_tbl)?;
+    }
+
     lua.globals().set("door", door)?;
 
     Ok(())
+}
+
+fn lua_params_to_vec(params: Option<LuaTable>) -> LuaResult<Vec<DbValue>> {
+    let mut out = Vec::new();
+    if let Some(tbl) = params {
+        for val in tbl.sequence_values::<LuaValue>() {
+            let val = val?;
+            out.push(match val {
+                LuaValue::Integer(i) => DbValue::Int(i),
+                LuaValue::Number(f)  => DbValue::Real(f),
+                LuaValue::String(s)  => DbValue::Text(s.to_str()?.to_string()),
+                LuaValue::Nil        => DbValue::Null,
+                LuaValue::Boolean(b) => DbValue::Int(if b { 1 } else { 0 }),
+                other => return Err(LuaError::external(anyhow::anyhow!(
+                    "unsupported param type: {:?}", other
+                ))),
+            });
+        }
+    }
+    Ok(out)
+}
+
+fn dbvalue_to_lua(lua: &Lua, v: DbValue) -> LuaResult<LuaValue<'_>> {
+    Ok(match v {
+        DbValue::Int(i)  => LuaValue::Integer(i),
+        DbValue::Real(f) => LuaValue::Number(f),
+        DbValue::Text(s) => LuaValue::String(lua.create_string(&s)?),
+        DbValue::Null    => LuaValue::Nil,
+    })
 }
