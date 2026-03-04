@@ -13,10 +13,17 @@ local function show_banner()
 end
 
 local function show_stats()
-    -- Persistent visit counter (per-user, stored in SQLite via door.data)
-    local visits_str = door.data.get("visits") or "0"
-    local visits     = tonumber(visits_str) + 1
-    door.data.set("visits", tostring(visits))
+    -- Upsert visit counter via door.db
+    local uid = door.user.id
+    door.db.execute([[
+        INSERT INTO door_example_stats (user_id, visits) VALUES (?, 1)
+        ON CONFLICT(user_id) DO UPDATE SET visits = visits + 1
+    ]], {uid})
+    local rows   = door.db.query(
+        "SELECT visits, best_guesses FROM door_example_stats WHERE user_id = ?",
+        {uid}
+    )
+    local visits = rows[1] and rows[1].visits or 1
 
     door.writeln("Your visit count: " .. visits)
     door.writeln("Server time:      " .. os.date("%Y-%m-%d %H:%M:%S", door.time()))
@@ -46,11 +53,18 @@ local function guessing_game()
             door.writeln("Please enter a number.")
         elseif n == secret then
             door.writeln("Correct! Well done!")
-            -- Save best guesses
-            local best_str = door.data.get("best_guesses")
-            local best     = best_str and tonumber(best_str) or math.huge
-            if guesses < best then
-                door.data.set("best_guesses", tostring(guesses))
+            -- Save best guesses via door.db
+            local uid  = door.user.id
+            local rows = door.db.query(
+                "SELECT best_guesses FROM door_example_stats WHERE user_id = ?",
+                {uid}
+            )
+            local best = rows[1] and rows[1].best_guesses
+            if best == nil or guesses < best then
+                door.db.execute(
+                    "UPDATE door_example_stats SET best_guesses = ? WHERE user_id = ?",
+                    {guesses, uid}
+                )
                 door.writeln("New personal best: " .. guesses .. " guess(es)!")
             end
             return

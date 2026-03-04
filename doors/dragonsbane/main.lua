@@ -3,7 +3,7 @@
 --
 -- Fight monsters in the realm, level up your hero, equip better gear,
 -- and eventually face the Dragon.  Character progress is saved between
--- sessions via door.data (SQLite KV).  You get 10 turns per day.
+-- sessions via door.db (SQLite).  You get 10 turns per day.
 
 math.randomseed(door.time() + door.user.id * 1337)
 
@@ -94,50 +94,53 @@ local MONSTERS = {
 
 -- ── CHARACTER ─────────────────────────────────────────────────────────────
 local C = {}
-
-local function gn(k, def)
-    return tonumber(door.data.get(k)) or def
-end
+local UID = door.user.id
 
 local function load_char()
     local today = os.date("%Y-%m-%d")
-    C.level  = gn("lv",   1)
-    C.xp     = gn("xp",   0)
-    C.max_hp = gn("mhp",  25)
-    C.hp     = gn("hp",   25)
-    C.str    = gn("str",  5)
-    C.def    = gn("def",  2)
-    C.gold   = gn("gold", 50)
-    C.watk   = gn("watk", 0)
-    C.ddef   = gn("ddef", 0)
-    C.wname  = door.data.get("wn") or "Rusty Dagger"
-    C.aname  = door.data.get("an") or "Tattered Cloth"
-    C.kills  = gn("kills", 0)
-    C.deaths = gn("deaths", 0)
-    if door.data.get("tdate") ~= today then
-        C.turns = DAILY_TURNS
+    local rows  = door.db.query(
+        "SELECT * FROM door_dragonsbane_characters WHERE user_id = ?",
+        {UID}
+    )
+    if #rows == 0 then
+        -- First visit: insert a default row then load defaults
+        door.db.execute(
+            "INSERT INTO door_dragonsbane_characters (user_id) VALUES (?)",
+            {UID}
+        )
+        C.level  = 1;  C.xp    = 0;  C.max_hp = 25; C.hp    = 25
+        C.str    = 5;  C.def   = 2;  C.gold   = 50; C.watk  = 0
+        C.ddef   = 0;  C.kills = 0;  C.deaths = 0
+        C.wname  = "Rusty Dagger";   C.aname  = "Tattered Cloth"
+        C.turns  = DAILY_TURNS;      C.tdate  = today
     else
-        C.turns = gn("turns", DAILY_TURNS)
+        local r  = rows[1]
+        C.level  = r.level;    C.xp     = r.xp;    C.max_hp = r.max_hp
+        C.hp     = r.hp;       C.str    = r.strength; C.def  = r.defense
+        C.gold   = r.gold;     C.watk   = r.watk;  C.ddef   = r.ddef
+        C.wname  = r.wname;    C.aname  = r.aname
+        C.kills  = r.kills;    C.deaths = r.deaths
+        if r.tdate ~= today then
+            C.turns = DAILY_TURNS
+        else
+            C.turns = r.turns
+        end
+        C.tdate = today
     end
-    C.tdate = today
 end
 
 local function save_char()
-    door.data.set("lv",     tostring(C.level))
-    door.data.set("xp",     tostring(C.xp))
-    door.data.set("mhp",    tostring(C.max_hp))
-    door.data.set("hp",     tostring(math.max(1, C.hp)))
-    door.data.set("str",    tostring(C.str))
-    door.data.set("def",    tostring(C.def))
-    door.data.set("gold",   tostring(C.gold))
-    door.data.set("watk",   tostring(C.watk))
-    door.data.set("ddef",   tostring(C.ddef))
-    door.data.set("wn",     C.wname)
-    door.data.set("an",     C.aname)
-    door.data.set("kills",  tostring(C.kills))
-    door.data.set("deaths", tostring(C.deaths))
-    door.data.set("turns",  tostring(C.turns))
-    door.data.set("tdate",  C.tdate)
+    door.db.execute([[
+        UPDATE door_dragonsbane_characters SET
+            level=?, xp=?, max_hp=?, hp=?, strength=?, defense=?,
+            gold=?, watk=?, ddef=?, wname=?, aname=?,
+            kills=?, deaths=?, turns=?, tdate=?
+        WHERE user_id=?
+    ]], {
+        C.level, C.xp, C.max_hp, math.max(1, C.hp), C.str, C.def,
+        C.gold, C.watk, C.ddef, C.wname, C.aname,
+        C.kills, C.deaths, C.turns, C.tdate, UID
+    })
 end
 
 local function xp_cap()  return C.level * 100 end
@@ -361,15 +364,11 @@ local function shop(items, label, stat_key, name_key, owned_name)
         if stat_key == "a" then
             C.watk  = item.a
             C.wname = item.n
-            door.data.set("wn",   item.n)
-            door.data.set("watk", tostring(item.a))
         else
             C.ddef  = item.d
             C.aname = item.n
-            door.data.set("an",   item.n)
-            door.data.set("ddef", tostring(item.d))
         end
-        door.data.set("gold", tostring(C.gold))
+        save_char()
         WL(GRN.."  Purchased: "..item.n..RST)
     end
     pause()
