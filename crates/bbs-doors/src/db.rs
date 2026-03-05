@@ -29,7 +29,7 @@ impl DoorDb {
         let mut i = 0;
         while i < words.len() {
             let up = words[i].to_uppercase();
-            let keyword = up.trim_end_matches(|c: char| c == '(' || c == ';');
+            let keyword = up.trim_end_matches(['(', ';']);
             if matches!(keyword, "FROM" | "JOIN" | "INTO" | "UPDATE" | "TABLE") {
                 // Skip qualifiers: IF NOT EXISTS, OR IGNORE, etc.
                 let mut j = i + 1;
