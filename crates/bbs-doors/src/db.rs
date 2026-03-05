@@ -30,7 +30,10 @@ impl DoorDb {
         while i < words.len() {
             let up = words[i].to_uppercase();
             let keyword = up.trim_end_matches(['(', ';']);
-            if matches!(keyword, "FROM" | "JOIN" | "INTO" | "UPDATE" | "TABLE") {
+            // "DO UPDATE SET" is upsert syntax — UPDATE here is not followed by a table name.
+            let prev_up = i.checked_sub(1).and_then(|p| words.get(p)).map(|w| w.to_uppercase());
+            let is_do_update = keyword == "UPDATE" && prev_up.as_deref() == Some("DO");
+            if !is_do_update && matches!(keyword, "FROM" | "JOIN" | "INTO" | "UPDATE" | "TABLE") {
                 // Skip qualifiers: IF NOT EXISTS, OR IGNORE, etc.
                 let mut j = i + 1;
                 while j < words.len() {
@@ -151,6 +154,16 @@ mod tests {
         let db = make_db("sre").await;
         assert!(db.check_prefix("SELECT * FROM users").is_err());
         assert!(db.check_prefix("DROP TABLE door_other_stuff").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_on_conflict_do_update_set() {
+        let db = make_db("sre").await;
+        // "DO UPDATE SET" must not trigger table-name check on "SET"
+        assert!(db.check_prefix(
+            "INSERT INTO door_sre_galaxy (key, value) VALUES (?, ?) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value"
+        ).is_ok());
     }
 
     #[tokio::test]
