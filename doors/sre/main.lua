@@ -141,8 +141,8 @@ local function register_empire()
     local name = ui.INPUT("  Choose your empire name: ")
     if not name or name == "" then return nil end
     local e2, err = emp.register(name)
-    if err then
-        ui.WL(ui.RED.."  "..err..ui.RST)
+    if not e2 then
+        ui.WL(ui.RED.."  "..(err or "Registration failed.")..ui.RST)
         ui.pause()
         return nil
     end
